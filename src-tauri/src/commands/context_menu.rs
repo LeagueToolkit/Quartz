@@ -33,9 +33,10 @@ mod imp {
     // an already-enabled install never re-registers and the new menu never shows.
     // Bumped 14 -> 15 for the folder verb "Zip Fantome".
     // Bumped 15 -> 16 for the .modpkg menu ("Unpack Modpkg") and the matching
-    // folder verb ("Pack Modpkg"); without the bump an already-enabled install
-    // never re-registers and neither entry appears.
-    const MENU_SCHEMA: u32 = 16;
+    // folder verb ("Pack Modpkg"), then 16 -> 17 for the two "Convert to .modpkg"
+    // entries; without the bump an already-enabled install never re-registers and
+    // the new entries never appear.
+    const MENU_SCHEMA: u32 = 17;
 
     /// A single child verb inside the Quartz submenu.
     struct Verb {
@@ -128,6 +129,9 @@ mod imp {
             "WadTool: Extract hashes + Unpack",
             "extract-unpack-wad",
         ),
+        // Separated from the WadTool group: this packages rather than extracts, and
+        // asks for the mod name / author / version a bare WAD does not carry.
+        vs("04towadmodpkg", "Convert to .modpkg", "wad-to-modpkg"),
     ];
     const TEX: &[Verb] = &[
         v("01tex2dds", "QuartzTex: Convert to .dds", "tex2dds"),
@@ -150,7 +154,12 @@ mod imp {
         "sco2scb",
     )];
     // .fantome mod package (a zip) → extracted into a sibling folder.
-    const FANTOME: &[Verb] = &[v("01unzipfantome", "Unzip Fantome", "unzip-fantome")];
+    const FANTOME: &[Verb] = &[
+        v("01unzipfantome", "Unzip Fantome", "unzip-fantome"),
+        // Seeds its prompts from META/info.json, but modpkg describes a mod its own
+        // way, so the fields are confirmed rather than copied across.
+        v("02fantometomodpkg", "Convert to .modpkg", "fantome-to-modpkg"),
+    ];
     // A .modpkg package, unpacked into a sibling `_<name>` folder.
     const MODPKG: &[Verb] = &[v("01unpackmodpkg", "Unpack Modpkg", "unpack-modpkg")];
 

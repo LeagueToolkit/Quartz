@@ -105,6 +105,7 @@ fn is_convert_verb(verb: &str) -> bool {
             | "sco2scb" | "sco2scbdir"
             | "unzip-fantome" | "zip-fantome"
             | "unpack-modpkg" | "pack-modpkg"
+            | "fantome-to-modpkg" | "wad-to-modpkg"
             // Listed in the menu but their conversion logic lands in a later slice.
             | "noskinlite"
     )
@@ -161,6 +162,8 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
         "zip-fantome" => zip_fantome(path),
         "unpack-modpkg" => unpack_modpkg(path),
         "pack-modpkg" => pack_modpkg(path),
+        "fantome-to-modpkg" => fantome_to_modpkg(path),
+        "wad-to-modpkg" => wad_to_modpkg(path),
 
         _ => Err(format!("unknown verb '{verb}'")),
     }
@@ -1379,7 +1382,428 @@ fn pack_modpkg(dir: &Path) -> Result<String, String> {
     ))
 }
 
+/* ── fantome / wad.client -> modpkg ──────────────────────────────────────── */
+
+/// A modpkg's `name` is a slug: ASCII lowercase, digits and hyphens, no leading or
+/// trailing hyphen. `Slug::new` VALIDATES rather than normalizes, so anything derived
+/// from a mod title has to be put in that shape first or the build is rejected.
+fn slugify(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_hyphen = false;
+    for c in s.chars() {
+        let c = c.to_ascii_lowercase();
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            out.push(c);
+            prev_hyphen = false;
+        } else if !prev_hyphen && !out.is_empty() {
+            out.push('-');
+            prev_hyphen = true;
+        }
+    }
+    let trimmed = out.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "mod".to_string()
+    } else {
+        trimmed
+    }
+}
+
+/// Coerce whatever a mod calls its version into the semver a modpkg requires.
+///
+/// Fantome versions are free text in practice ("Patch 16.16", "2.0", "1.0.0"), while
+/// the modpkg field is a `semver::Version`. Leading numbers are reused where there are
+/// any, so `2.0` becomes `2.0.0`, and anything unparseable falls back to `1.0.0`
+/// rather than failing a conversion over a cosmetic field.
+fn coerce_version(raw: &str) -> semver::Version {
+    if let Ok(v) = semver::Version::parse(raw.trim()) {
+        return v;
+    }
+    let nums: Vec<u64> = raw
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    match nums.as_slice() {
+        [major] => semver::Version::new(*major, 0, 0),
+        [major, minor] => semver::Version::new(*major, *minor, 0),
+        [major, minor, patch, ..] => semver::Version::new(*major, *minor, *patch),
+        [] => semver::Version::new(1, 0, 0),
+    }
+}
+
+/// What a modpkg needs to describe itself, gathered from the user.
+struct ModpkgAsk {
+    display_name: String,
+    author: String,
+    version: semver::Version,
+    description: Option<String>,
+}
+
+/// Ask for the metadata a modpkg carries, defaulting to what the source already knew.
+///
+/// A `.wad.client` knows nothing about itself, so every field is asked cold. A
+/// `.fantome` has an `info.json`, but its fields are NOT mapped across as-is: they only
+/// seed the defaults, and the user still confirms each one, because the two formats do
+/// not describe a mod the same way.
+///
+/// Falls back to the defaults without asking when there is no console to ask through
+/// (a piped or scripted run), so a conversion still completes unattended.
+fn ask_modpkg_metadata(fallback_name: &str, defaults: Option<&serde_json::Value>) -> ModpkgAsk {
+    let field = |key: &str| -> Option<String> {
+        defaults
+            .and_then(|v| v.get(key))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let default_name = field("Name").unwrap_or_else(|| fallback_name.to_string());
+    let default_author = field("Author").unwrap_or_default();
+    let default_version = field("Version").unwrap_or_else(|| "1.0.0".to_string());
+    let default_description = field("Description").unwrap_or_default();
+
+    if !ensure_console() {
+        return ModpkgAsk {
+            display_name: default_name,
+            author: if default_author.is_empty() {
+                "Unknown".to_string()
+            } else {
+                default_author
+            },
+            version: coerce_version(&default_version),
+            description: Some(default_description).filter(|s| !s.is_empty()),
+        };
+    }
+
+    println!();
+    println!("Packing a modpkg. Press Enter to accept a [default].");
+
+    let display_name = prompt("  Mod name", Some(&default_name)).unwrap_or(default_name);
+    let author = prompt(
+        "  Author",
+        Some(if default_author.is_empty() {
+            "Unknown"
+        } else {
+            &default_author
+        }),
+    )
+    .unwrap_or_else(|| "Unknown".to_string());
+    let version_raw =
+        prompt("  Version", Some(&default_version)).unwrap_or_else(|| default_version.clone());
+    // Description is the one optional field, so an empty answer is accepted as "none"
+    // instead of being re-asked the way `prompt` would.
+    let description = {
+        use std::io::Write;
+        if default_description.is_empty() {
+            print!("  Description (optional): ");
+        } else {
+            print!("  Description (optional) [{default_description}]: ");
+        }
+        let _ = std::io::stdout().flush();
+        let mut line = String::new();
+        let answered = match std::io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => default_description.clone(),
+            Ok(_) => {
+                let answer = line.trim();
+                if answer.is_empty() {
+                    default_description.clone()
+                } else {
+                    answer.to_string()
+                }
+            }
+        };
+        Some(answered).filter(|s| !s.is_empty())
+    };
+    println!();
+
+    ModpkgAsk {
+        display_name,
+        author,
+        version: coerce_version(&version_raw),
+        description,
+    }
+}
+
+/// Build a modpkg from `(wad name -> chunks)` and write it to `out_path`.
+///
+/// Shared by both converters so the two produce comparable packages: one `base` layer,
+/// the same chunk-naming rule, the same metadata shape.
+fn write_modpkg_from_wads(
+    wads: Vec<(String, Vec<(String, Vec<u8>)>)>,
+    ask: &ModpkgAsk,
+    champion: Option<String>,
+    out_path: &Path,
+) -> Result<usize, String> {
+    use ltk_modpkg::builder::{ModpkgBuilder, ModpkgChunkBuilder, ModpkgLayerBuilder};
+    use ltk_modpkg::ModpkgCompression;
+
+    let metadata = ltk_modpkg::ModpkgMetadata {
+        schema_version: ltk_modpkg::CURRENT_SCHEMA_VERSION,
+        name: slugify(&ask.display_name),
+        display_name: ask.display_name.clone(),
+        description: ask.description.clone(),
+        version: ask.version.clone(),
+        distributor: None,
+        authors: vec![ltk_modpkg::ModpkgAuthor::new(ask.author.clone(), None)],
+        license: ltk_modpkg::ModpkgLicense::None,
+        tags: Vec::new(),
+        champions: champion.into_iter().collect(),
+        maps: Vec::new(),
+        layers: Vec::new(),
+    };
+
+    // One `base` layer: a converted mod has no variants to separate, and the format
+    // requires a base layer regardless.
+    let mut builder = ModpkgBuilder::default()
+        .with_metadata(metadata)
+        .with_layer(ModpkgLayerBuilder::base());
+    let mut chunk_data: std::collections::HashMap<ltk_modpkg::ChunkKey, Vec<u8>> =
+        std::collections::HashMap::new();
+
+    for (wad_name, entries) in wads {
+        for (rel, bytes) in entries {
+            // A 16-hex stem IS the chunk hash, not something to hash: hashing the hex
+            // STRING would move the chunk somewhere the game never looks.
+            let file_name = rel.rsplit('/').next().unwrap_or(&rel);
+            let stem = file_name.split('.').next().unwrap_or(file_name);
+            let is_hex = stem.len() == 16 && stem.bytes().all(|b| b.is_ascii_hexdigit());
+            let cb = if is_hex {
+                ModpkgChunkBuilder::new()
+                    .with_hashed_chunk_name(&rel)
+                    .map_err(|e| format!("invalid chunk name {rel:?}: {e}"))?
+            } else {
+                ModpkgChunkBuilder::new().with_path(&rel)
+            };
+            let ext = Path::new(&rel).extension().and_then(|e| e.to_str());
+            let cb = cb
+                .with_compression(ModpkgCompression::for_extension(ext))
+                .with_layer(ltk_modpkg::BASE_LAYER_NAME)
+                .with_wad(&wad_name);
+
+            chunk_data.insert(cb.key(), bytes);
+            builder = builder.with_chunk(cb);
+        }
+    }
+
+    if chunk_data.is_empty() {
+        return Err("no WAD chunks found to pack".to_string());
+    }
+
+    let mut out = std::io::Cursor::new(Vec::<u8>::new());
+    builder
+        .build_to_writer(&mut out, |cb| {
+            chunk_data.get(&cb.key()).cloned().ok_or_else(|| {
+                ltk_modpkg::builder::ModpkgBuilderError::InvalidChunkName(format!(
+                    "no data registered for {}",
+                    cb.path()
+                ))
+            })
+        })
+        .map_err(|e| format!("failed to build modpkg: {e}"))?;
+    let bytes = out.into_inner();
+
+    // Verify it mounts before it is written, so a broken package never reaches disk.
+    ltk_modpkg::Modpkg::mount_from_reader(std::io::Cursor::new(bytes.as_slice()))
+        .map_err(|e| format!("built modpkg failed verification: {e}"))?;
+
+    std::fs::write(out_path, &bytes).map_err(|e| e.to_string())?;
+    Ok(chunk_data.len())
+}
+
+/// Read one packed `.wad.client` into `(chunk path, bytes)` pairs.
+///
+/// Delegates to `wad_tools::unpack` rather than reading the WAD directly, so the chunk
+/// NAMING is the same as every other Quartz unpack: hashes resolved through the LMDB
+/// dictionary and any bin trailer, and only what stays unresolved left as a 16-hex
+/// stem. `write_modpkg_from_wads` reads that stem straight back as the hash, so an
+/// unnamed chunk keeps its identity.
+fn read_wad_chunks(wad_path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let scratch = unique_dir(
+        &std::env::temp_dir(),
+        &format!("quartz-wadread-{}", file_stem(wad_path)),
+    );
+    quartz_lib::wad_tools::unpack(wad_path, Some(&scratch)).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&scratch);
+        e.to_string()
+    })?;
+
+    let mut files = Vec::new();
+    walk_all(&scratch, &mut files);
+    let mut out = Vec::with_capacity(files.len());
+    for abs in files {
+        let Ok(rel) = abs.strip_prefix(&scratch) else {
+            continue;
+        };
+        // Chunk paths are lowercase forward-slash, which is what the hash is taken over.
+        let rel = rel.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+        let Ok(bytes) = std::fs::read(&abs) else {
+            continue;
+        };
+        out.push((rel, bytes));
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+    Ok(out)
+}
+
+/// Convert a `.wad.client` into a `.modpkg` beside it.
+///
+/// The WAD knows nothing about who made it, so the metadata a modpkg requires is asked
+/// for interactively. The champion is taken from the file name, the same convention the
+/// launcher uses.
+fn wad_to_modpkg(wad_path: &Path) -> Result<String, String> {
+    let wad_name = name(wad_path);
+    if !wad_name.to_ascii_lowercase().ends_with(".wad.client") {
+        return Err(format!("{wad_name} is not a .wad.client"));
+    }
+
+    let chunks = read_wad_chunks(wad_path)?;
+    if chunks.is_empty() {
+        return Err(format!("{wad_name} holds no chunks"));
+    }
+
+    // `Samira.wad.client` -> base `Samira`, which is both the default mod name and the
+    // champion. A locale or audio WAD has a dotted/underscored base and names no champ.
+    let base = wad_name[..wad_name.len() - ".wad.client".len()].to_string();
+    let champion = (!base.contains('.') && !base.contains('_')).then(|| base.clone());
+
+    let ask = ask_modpkg_metadata(&base, None);
+    let parent = wad_path.parent().unwrap_or_else(|| Path::new("."));
+    let out_path = unique_file(parent, &sanitize_file_name(&ask.display_name), "modpkg");
+
+    let count =
+        write_modpkg_from_wads(vec![(wad_name.clone(), chunks)], &ask, champion, &out_path)?;
+    Ok(format!("{wad_name} -> {} ({count} chunks)", name(&out_path)))
+}
+
+/// Convert a `.fantome` into a `.modpkg` beside it.
+///
+/// A fantome is a zip of `WAD/<name>.wad.client` payloads (and/or loose `RAW/`
+/// content) plus `META/info.json`. The info.json is read only to SEED the prompts:
+/// modpkg describes a mod its own way, so the fields are confirmed rather than copied.
+fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+
+    // Extract the payload to a scratch dir first: the WAD reader seeks, and a zip entry
+    // is a forward-only stream.
+    let scratch = unique_dir(
+        &std::env::temp_dir(),
+        &format!("quartz-modpkg-{}", file_stem(archive_path)),
+    );
+    std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+
+    let mut info: Option<serde_json::Value> = None;
+    let mut wad_files: Vec<(String, PathBuf)> = Vec::new();
+    let mut raw_files: Vec<(String, PathBuf)> = Vec::new();
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        // `enclosed_name` rejects absolute paths and `..` traversal.
+        let Some(rel) = entry.enclosed_name() else {
+            continue;
+        };
+        if entry.is_dir() {
+            continue;
+        }
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        let lower = rel_str.to_ascii_lowercase();
+
+        if lower == "meta/info.json" {
+            use std::io::Read;
+            let mut text = String::new();
+            if entry.read_to_string(&mut text).is_ok() {
+                info = serde_json::from_str(&text).ok();
+            }
+            continue;
+        }
+
+        let out_path = scratch.join(&rel);
+        if let Some(dir) = out_path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+
+        // `WAD/<name>.wad.client` is a packed WAD; `RAW/<wad>/<path>` is loose content
+        // that already carries its real path.
+        if lower.starts_with("wad/") && lower.ends_with(".wad.client") {
+            if let Some(wad_name) = rel_str.splitn(2, '/').nth(1) {
+                wad_files.push((wad_name.to_string(), out_path));
+            }
+        } else if lower.starts_with("raw/") {
+            raw_files.push((rel_str, out_path));
+        }
+    }
+
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&scratch);
+    };
+
+    let mut wads: Vec<(String, Vec<(String, Vec<u8>)>)> = Vec::new();
+    for (wad_name, path) in &wad_files {
+        match read_wad_chunks(path) {
+            Ok(chunks) if !chunks.is_empty() => wads.push((wad_name.clone(), chunks)),
+            Ok(_) => {}
+            Err(e) => eprintln!("  {wad_name}: {e}"),
+        }
+    }
+
+    // RAW content is grouped under the WAD its first path component names, which is the
+    // layout a fantome uses: `RAW/Samira.wad.client/assets/...`.
+    if !raw_files.is_empty() {
+        let mut grouped: std::collections::BTreeMap<String, Vec<(String, Vec<u8>)>> =
+            std::collections::BTreeMap::new();
+        for (rel_str, path) in &raw_files {
+            let mut parts = rel_str.splitn(3, '/');
+            let _raw = parts.next();
+            let (Some(wad_name), Some(inner)) = (parts.next(), parts.next()) else {
+                continue;
+            };
+            let Ok(bytes) = std::fs::read(path) else {
+                continue;
+            };
+            grouped
+                .entry(wad_name.to_string())
+                .or_default()
+                .push((inner.to_ascii_lowercase(), bytes));
+        }
+        for (wad_name, entries) in grouped {
+            wads.push((wad_name, entries));
+        }
+    }
+
+    if wads.is_empty() {
+        cleanup();
+        return Err(format!("{} holds no WAD payload", name(archive_path)));
+    }
+
+    // A single champion WAD names the champion, the same rule the launcher uses.
+    let champion = match wads.as_slice() {
+        [(only, _)] => only
+            .to_ascii_lowercase()
+            .strip_suffix(".wad.client")
+            .filter(|b| !b.contains('.') && !b.contains('_'))
+            .map(str::to_string),
+        _ => None,
+    };
+
+    let ask = ask_modpkg_metadata(&file_stem(archive_path), info.as_ref());
+    let parent = archive_path.parent().unwrap_or_else(|| Path::new("."));
+    let out_path = unique_file(parent, &sanitize_file_name(&ask.display_name), "modpkg");
+
+    let result = write_modpkg_from_wads(wads, &ask, champion, &out_path);
+    cleanup();
+    let count = result?;
+
+    Ok(format!(
+        "{} -> {} ({count} chunks)",
+        name(archive_path),
+        name(&out_path)
+    ))
+}
+
 /* ── sco -> scb ──────────────────────────────────────────────────────────── */
+
 
 
 fn sco_to_scb(sco_path: &Path) -> Result<String, String> {
@@ -1646,3 +2070,103 @@ fn attach_console() {
 
 #[cfg(not(windows))]
 fn attach_console() {}
+
+/// Make sure there IS a console, allocating one if [`attach_console`] found none.
+///
+/// A release build is `windows_subsystem = "windows"`, so a right-click from Explorer
+/// starts with no console at all and `AttachConsole` is a no-op. Anything that needs to
+/// ASK the user something has to own a window, or the prompt is written nowhere and the
+/// read hits EOF immediately.
+///
+/// Allocating is not enough on its own: the process's std handles were bound before the
+/// console existed, so they are reopened onto `CONIN$`/`CONOUT$` afterwards. Rust's
+/// `std::io` looks the handles up per call rather than caching them, so this makes
+/// `println!` and `stdin().read_line` work from that point on.
+///
+/// Returns whether a console is usable. Only the verbs that prompt call this; the rest
+/// keep the quieter attach-only behaviour so a scripted run stays silent.
+#[cfg(windows)]
+fn ensure_console() -> bool {
+    use std::ptr::{null, null_mut};
+    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows_sys::Win32::System::Console::{
+        AllocConsole, GetConsoleWindow, SetConsoleTitleW, SetStdHandle, STD_ERROR_HANDLE,
+        STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+
+    unsafe {
+        if GetConsoleWindow().is_null() && AllocConsole() == 0 {
+            return false;
+        }
+
+        // Open the console device and point the std handles at it. Without this the
+        // handles still refer to whatever they were bound to before the console
+        // existed, so the prompt would be written nowhere and the read would see EOF.
+        let open = |name: &str, access: u32| {
+            let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+            CreateFileW(
+                wide.as_ptr(),
+                access,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                null(),
+                OPEN_EXISTING,
+                0,
+                null_mut(),
+            )
+        };
+
+        let input = open("CONIN$", GENERIC_READ | GENERIC_WRITE);
+        if input != INVALID_HANDLE_VALUE {
+            SetStdHandle(STD_INPUT_HANDLE, input);
+        }
+        let output = open("CONOUT$", GENERIC_READ | GENERIC_WRITE);
+        if output != INVALID_HANDLE_VALUE {
+            SetStdHandle(STD_OUTPUT_HANDLE, output);
+            SetStdHandle(STD_ERROR_HANDLE, output);
+        }
+
+        let title: Vec<u16> = "Quartz".encode_utf16().chain(std::iter::once(0)).collect();
+        SetConsoleTitleW(title.as_ptr());
+    }
+    true
+}
+
+#[cfg(not(windows))]
+fn ensure_console() -> bool {
+    true
+}
+
+/// Ask the user for one value, offering `default` when they just press Enter.
+///
+/// An empty answer with no default re-asks rather than accepting a blank, because every
+/// caller here needs the value. Returns `None` if stdin closes (a piped or scripted run
+/// with nothing to read), so the caller can fall back instead of looping forever.
+fn prompt(label: &str, default: Option<&str>) -> Option<String> {
+    use std::io::Write;
+    loop {
+        match default {
+            Some(d) if !d.is_empty() => print!("{label} [{d}]: "),
+            _ => print!("{label}: "),
+        }
+        let _ = std::io::stdout().flush();
+
+        let mut line = String::new();
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => return None,
+            Ok(_) => {}
+        }
+        let answer = line.trim();
+        if !answer.is_empty() {
+            return Some(answer.to_string());
+        }
+        if let Some(d) = default {
+            if !d.is_empty() {
+                return Some(d.to_string());
+            }
+        }
+        println!("  (a value is required)");
+    }
+}

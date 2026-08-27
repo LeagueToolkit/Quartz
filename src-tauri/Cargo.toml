@@ -3,7 +3,7 @@ members = [".", "crates/quartz-lib"]
 
 [package]
 name = "quartz"
-version = "4.2.6"
+version = "4.2.7"
 edition = "2021"
 default-run = "quartz"
 
@@ -47,7 +47,16 @@ semver = "1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Console",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    # Rebinding the std handles onto a freshly allocated console (see
+    # `ensure_console`) opens CONIN$/CONOUT$ and calls SetStdHandle.
+    "Win32_Storage_FileSystem",
+    "Win32_Foundation",
+    "Win32_Security",
+] }
 
 # Release settings match Flint's, deliberately.
 #
