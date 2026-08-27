@@ -1626,17 +1626,24 @@ fn write_modpkg_from_wads(
 
 /// Read one packed `.wad.client` into `(chunk path, bytes)` pairs.
 ///
-/// Delegates to `wad_tools::unpack` rather than reading the WAD directly, so the chunk
-/// NAMING is the same as every other Quartz unpack: hashes resolved through the LMDB
-/// dictionary and any bin trailer, and only what stays unresolved left as a 16-hex
-/// stem. `write_modpkg_from_wads` reads that stem straight back as the hash, so an
-/// unnamed chunk keeps its identity.
+/// Delegates to `wad_tools::extract_and_unpack` rather than reading the WAD directly,
+/// so the chunk NAMING is the same as every other Quartz unpack: hashes resolved
+/// through the LMDB dictionary and any bin trailer, and only what stays unresolved left
+/// as a 16-hex stem. `write_modpkg_from_wads` reads that stem straight back as the
+/// hash, so an unnamed chunk keeps its identity.
+///
+/// EXTRACT, not just unpack. The extract phase scans every chunk for the path strings
+/// its bins carry and merges them into the hash dictionary, which the unpack phase then
+/// resolves against. A mod that repathed its assets carries those paths in its OWN bins
+/// and nowhere else, so skipping this step names them by hash instead. xxh64 does not
+/// invert, so a name lost here is lost for good: the conversion would bake the loss
+/// into the modpkg it writes.
 fn read_wad_chunks(wad_path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
     let scratch = unique_dir(
         &std::env::temp_dir(),
         &format!("quartz-wadread-{}", file_stem(wad_path)),
     );
-    quartz_lib::wad_tools::unpack(wad_path, Some(&scratch)).map_err(|e| {
+    quartz_lib::wad_tools::extract_and_unpack(wad_path, Some(&scratch)).map_err(|e| {
         let _ = std::fs::remove_dir_all(&scratch);
         e.to_string()
     })?;
@@ -1657,6 +1664,76 @@ fn read_wad_chunks(wad_path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
     }
     let _ = std::fs::remove_dir_all(&scratch);
     Ok(out)
+}
+
+/// Parse a `files.txt` into `hash -> path`.
+///
+/// Two formats exist and both appear in the wild: Quartz writes one PATH per line and
+/// leaves the hash implied (it is `xxh64(path)`), while Celestial writes `<16-hex>
+/// <path>` pairs. A line is read as a pair when it starts with a 16-hex token and has
+/// something after it, and as a bare path otherwise.
+///
+/// This file is the only record of a repathed asset's name once the bins have been
+/// rewritten, so reading it is what stops a conversion baking in a loss that xxh64
+/// makes permanent.
+fn parse_files_txt(text: &str) -> std::collections::HashMap<u64, String> {
+    let mut out = std::collections::HashMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (hash, path) = match line.split_once(char::is_whitespace) {
+            Some((head, rest))
+                if head.len() == 16
+                    && head.bytes().all(|b| b.is_ascii_hexdigit())
+                    && !rest.trim().is_empty() =>
+            {
+                match u64::from_str_radix(head, 16) {
+                    Ok(h) => (h, rest.trim().to_string()),
+                    Err(_) => continue,
+                }
+            }
+            // A bare path: the hash is taken over it, the same way the writer implied it.
+            _ => (quartz_lib::wad::path_hash(line), line.to_string()),
+        };
+        out.entry(hash).or_insert(path);
+    }
+    out
+}
+
+/// Rename any hash-named entry whose real path `known` records.
+///
+/// The unpack leaves a chunk hex-named when nothing could name it. `files.txt` often
+/// can: it is written precisely for the paths that exist in no dictionary. Applying it
+/// here means the modpkg is built with the name rather than inheriting the loss.
+///
+/// Returns how many entries were recovered.
+fn apply_known_paths(
+    wads: &mut [(String, Vec<(String, Vec<u8>)>)],
+    known: &std::collections::HashMap<u64, String>,
+) -> usize {
+    if known.is_empty() {
+        return 0;
+    }
+    let mut recovered = 0usize;
+    for (_, entries) in wads.iter_mut() {
+        for (rel, _) in entries.iter_mut() {
+            let file_name = rel.rsplit('/').next().unwrap_or(rel);
+            let stem = file_name.split('.').next().unwrap_or(file_name);
+            if stem.len() != 16 || !stem.bytes().all(|b| b.is_ascii_hexdigit()) {
+                continue;
+            }
+            let Ok(hash) = u64::from_str_radix(stem, 16) else {
+                continue;
+            };
+            if let Some(path) = known.get(&hash) {
+                *rel = path.to_ascii_lowercase();
+                recovered += 1;
+            }
+        }
+    }
+    recovered
 }
 
 /// Convert a `.wad.client` into a `.modpkg` beside it.
@@ -1684,8 +1761,21 @@ fn wad_to_modpkg(wad_path: &Path) -> Result<String, String> {
     let parent = wad_path.parent().unwrap_or_else(|| Path::new("."));
     let out_path = unique_file(parent, &sanitize_file_name(&ask.display_name), "modpkg");
 
-    let count =
-        write_modpkg_from_wads(vec![(wad_name.clone(), chunks)], &ask, champion, &out_path)?;
+    // A `files.txt` beside the WAD (or in a sibling `META/`) names the repathed assets
+    // that no dictionary knows. Applying it before the build is what keeps those names.
+    let mut wads = vec![(wad_name.clone(), chunks)];
+    let mut known = std::collections::HashMap::new();
+    for candidate in [parent.join("files.txt"), parent.join("META").join("files.txt")] {
+        if let Ok(text) = std::fs::read_to_string(&candidate) {
+            known.extend(parse_files_txt(&text));
+        }
+    }
+    let recovered = apply_known_paths(&mut wads, &known);
+    if recovered > 0 {
+        println!("  recovered {recovered} path(s) from files.txt");
+    }
+
+    let count = write_modpkg_from_wads(wads, &ask, champion, &out_path)?;
     Ok(format!("{wad_name} -> {} ({count} chunks)", name(&out_path)))
 }
 
@@ -1707,6 +1797,7 @@ fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
 
     let mut info: Option<serde_json::Value> = None;
+    let mut files_txt = String::new();
     let mut wad_files: Vec<(String, PathBuf)> = Vec::new();
     let mut raw_files: Vec<(String, PathBuf)> = Vec::new();
 
@@ -1721,6 +1812,18 @@ fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
         }
         let rel_str = rel.to_string_lossy().replace('\\', "/");
         let lower = rel_str.to_ascii_lowercase();
+
+        // A `files.txt` anywhere in the archive names repathed assets that exist in no
+        // dictionary; both the META copy and a WAD-root copy are read.
+        if lower.ends_with("files.txt") {
+            use std::io::Read;
+            let mut text = String::new();
+            if entry.read_to_string(&mut text).is_ok() {
+                files_txt.push_str(&text);
+                files_txt.push('\n');
+            }
+            continue;
+        }
 
         if lower == "meta/info.json" {
             use std::io::Read;
@@ -1800,6 +1903,14 @@ fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
             .map(str::to_string),
         _ => None,
     };
+
+    // Recover any repathed name the archive recorded, before the modpkg is built from
+    // these entries: a name not applied here is one the conversion loses for good.
+    let known = parse_files_txt(&files_txt);
+    let recovered = apply_known_paths(&mut wads, &known);
+    if recovered > 0 {
+        println!("  recovered {recovered} path(s) from files.txt");
+    }
 
     // With an info.json the fantome already knows what it is, so nothing is asked. A
     // fantome missing one (or carrying an unreadable one) is the same situation as a
