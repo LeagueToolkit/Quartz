@@ -232,13 +232,13 @@ fn py_to_bin(py_path: &Path) -> Result<String, String> {
     // still resolves its custom paths.
     std::fs::write(&out, body).map_err(|e| e.to_string())?;
 
-    /* The captured paths, at the mod root, as `files.txt`. This is now the ONLY
-       record: a trailer lived inside the bin and was lost the moment any other tool
-       reserialized the file, and then a custom path was unrecoverable, because it
-       exists in no dictionary by definition. A plain list beside the mod survives
-       that, needs no bin parsing to read, and is the format Quartz's repath already
-       writes. Merged, not overwritten: a bin is converted one at a time, and
-       rewriting the file per conversion would drop every other bin's paths. */
+    /* The captured names, at the WAD root, split by universe: `files.txt` for asset
+       paths and `binhashes.hashes.txt` for everything fnv1a32. This is now the ONLY
+       record. A trailer lived inside the bin and was lost the moment any other tool
+       reserialized the file, and then a custom name was unrecoverable, because it
+       exists in no dictionary by definition. A plain list beside the assets survives
+       that and needs no bin parsing to read. `zip_fantome` copies both up into META/
+       when the mod is packed. */
     if !map.is_empty() {
         merge_into_files_txt(&out, &map);
     }
@@ -277,48 +277,83 @@ fn register_trailer_into_mapper(trailer: &std::collections::HashMap<String, Stri
 ///
 /// Sorted by name and deduped, so reconverting the same bin produces no diff.
 /// Only entries the dictionary cannot resolve are written: a vanilla name is
-/// already recoverable, and listing those would bury the few that matter.
+/// The universe file for fnv1a32 names, beside `files.txt` at the mod root.
+///
+/// `<universe>.hashes.txt`, per the community spec: the FILE NAME says which hash
+/// function its lines take, so the lines are bare names with no hash column. `binhashes`
+/// is the catch-all for fnv1a32 values, which is what Quartz captures here (field, class,
+/// entry and object names plus `hash =` / `link =` values) with no way to tell which
+/// sub-universe any one name came from.
+const BIN_HASHES_TXT: &str = "binhashes.hashes.txt";
+
+/// Record the captured names beside the mod, split by keyspace.
+///
+/// One file per hash universe, and NO hash column in either. The hash is `xxh64(line)`
+/// for `files.txt` and `fnv1a32(line)` for `binhashes.hashes.txt`, both recomputable, so
+/// storing them only adds a second copy that can disagree with the name next to it after
+/// a hand edit. Quartz used to write `<hex> <name>` into one mixed file, which forced
+/// every reader to disambiguate two keyspaces by hex width and made `files.txt` unusable
+/// by anything expecting the WAD-path convention.
+///
+/// Merged, not overwritten: a bin is converted one at a time, and rewriting per
+/// conversion would drop every other bin's names.
 fn merge_into_files_txt(bin_path: &Path, map: &std::collections::HashMap<String, String>) {
+    use std::collections::BTreeSet;
+
     let Some(root) = mod_root(bin_path) else {
         return;
     };
-    let list = root.join("files.txt");
+    let files_txt = root.join("files.txt");
+    let hashes_txt = root.join(BIN_HASHES_TXT);
 
-    // Keyed by name so a re-hash of the same name cannot produce a duplicate row.
-    let mut entries: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
-    for line in std::fs::read_to_string(&list).unwrap_or_default().lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        match line.split_once(char::is_whitespace) {
-            // `<hex> <name>` — the current format.
-            Some((hex, name)) if is_hash_hex(hex) => {
-                entries.insert(name.trim().to_string(), hex.to_ascii_lowercase());
+    // Sets, not maps: the name IS the row now.
+    let mut wad: BTreeSet<String> = BTreeSet::new();
+    let mut names: BTreeSet<String> = BTreeSet::new();
+
+    // Existing content, including anything written in the old mixed format. A legacy
+    // `<hex> <name>` row is filed by its hex WIDTH (8 = fnv1a32, 16 = xxh64) rather than
+    // by the file it was found in, which is what un-mixes a pre-split `files.txt`.
+    for (path, is_fnv_file) in [(&files_txt, false), (&hashes_txt, true)] {
+        for line in std::fs::read_to_string(path).unwrap_or_default().lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
             }
-            // A bare path, from the older format or written by hand. Keep it by
-            // hashing it as the asset path it must be.
-            _ => {
-                entries.insert(line.to_string(), format!("{:016x}", quartz_lib::wad::path_hash(line)));
+            match line.split_once(char::is_whitespace) {
+                Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
+                    let bucket = if hex.len() == 8 { &mut names } else { &mut wad };
+                    bucket.insert(rest.trim().to_string());
+                }
+                // A bare line means whichever universe its file is for.
+                _ => {
+                    let bucket = if is_fnv_file { &mut names } else { &mut wad };
+                    bucket.insert(line.to_string());
+                }
             }
         }
     }
 
-    let before = entries.len();
-    for (hex, name) in map {
-        entries.insert(name.clone(), hex.to_ascii_lowercase());
+    let before = (wad.len(), names.len());
+    for (hex, captured) in map {
+        let bucket = if hex.len() == 8 { &mut names } else { &mut wad };
+        bucket.insert(captured.clone());
     }
-    if entries.len() == before {
+    if (wad.len(), names.len()) == before {
         return;
     }
 
-    let contents = entries
-        .iter()
-        .map(|(name, hex)| format!("{hex} {name}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if let Err(e) = std::fs::write(&list, contents) {
-        tracing::warn!("could not write {}: {e}", list.display());
+    write_name_list(&files_txt, &wad);
+    write_name_list(&hashes_txt, &names);
+}
+
+/// Write one name per line, or remove the file when there is nothing to record.
+fn write_name_list(path: &Path, lines: &std::collections::BTreeSet<String>) {
+    if lines.is_empty() {
+        return;
+    }
+    let contents = lines.iter().cloned().collect::<Vec<_>>().join("\n");
+    if let Err(e) = std::fs::write(path, contents) {
+        tracing::warn!("could not write {}: {e}", path.display());
     }
 }
 
@@ -327,47 +362,58 @@ fn is_hash_hex(s: &str) -> bool {
     (s.len() == 8 || s.len() == 16) && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// Register `files.txt` at the mod root into the shared mapper.
+/// Register the mod root's hash lists into the shared mapper.
 ///
-/// The fallback for a bin with no trailer: the paths are listed beside the mod,
-/// and `xxh64(path)` is exactly the hash the bin holds, so the list is a
-/// dictionary for this mod's own invented names. Cheaper and more reliable than
-/// walking the folder, because it names paths whether or not the file is
-/// currently on disk.
+/// `files.txt` (asset paths, xxh64) and `binhashes.hashes.txt` (names, fnv1a32). Since
+/// Quartz stopped embedding a trailer, these ARE the record of a mod's own invented
+/// names, so reading them is what lets a repathed bin still render readably as `.py`
+/// instead of a wall of bare hashes.
+///
+/// Cheaper and more reliable than walking the folder, because a list names an asset
+/// whether or not the file is currently on disk.
 fn register_files_txt(bin_path: &Path) -> usize {
     let Some(root) = mod_root(bin_path) else {
         return 0;
     };
-    let Ok(text) = std::fs::read_to_string(root.join("files.txt")) else {
-        return 0;
-    };
-
     let mut w = ritoshark_bridge::get_cached_bin_hashes().write();
     let mut added = 0usize;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
+
+    // One file per universe, and the file decides how a bare line is hashed:
+    // `files.txt` lines are asset paths (xxh64), `binhashes.hashes.txt` lines are names
+    // (fnv1a32, widened - the mapper cannot collide because every WAD hash is >= 2^32).
+    for (path, is_fnv_file) in [
+        (root.join("files.txt"), false),
+        (root.join(BIN_HASHES_TXT), true),
+    ] {
+        let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
-        }
-        /* `<hex> <name>` is the current format; a bare path is the older one, or
-           a hand-written line. The hex matters because a name alone cannot say
-           which keyspace it belongs to — an fnv1a32 object name and an xxh64
-           asset path look identical as text. */
-        let (hash, name) = match line.split_once(char::is_whitespace) {
-            Some((hex, name)) if is_hash_hex(hex) => {
-                let Ok(h) = u64::from_str_radix(hex, 16) else { continue };
-                (h, name.trim())
-            }
-            _ => (quartz_lib::wad::path_hash(line), line),
         };
-        // Gap-fill only: a name from the trailer or the real dictionary wins.
-        if w.get(hash).is_none() {
-            w.insert(hash, name.to_string());
-            added += 1;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let (hash, resolved) = match line.split_once(char::is_whitespace) {
+                // A legacy `<hex> <name>` row from before the split. Still read, so a
+                // mod written by an older Quartz keeps resolving.
+                Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
+                    let Ok(h) = u64::from_str_radix(hex, 16) else {
+                        continue;
+                    };
+                    (h, rest.trim())
+                }
+                _ if is_fnv_file => (quartz_lib::hash::fnv1a(line) as u64, line),
+                _ => (quartz_lib::wad::path_hash(line), line),
+            };
+            // Gap-fill only: a name from the trailer or the real dictionary wins.
+            if w.get(hash).is_none() {
+                w.insert(hash, resolved.to_string());
+                added += 1;
+            }
         }
     }
     if added > 0 {
-        tracing::info!("resolved {added} path(s) from files.txt at {}", root.display());
+        tracing::info!("resolved {added} name(s) from hash lists at {}", root.display());
     }
     added
 }
@@ -2013,6 +2059,58 @@ fn unzip_fantome(archive_path: &Path) -> Result<String, String> {
 /// round-trips to the same filename. (LtMAO instead renames the archive to
 /// `<Name> V<Version> by <Author>` out of info.json, which silently changes the
 /// file name on every repack — we deliberately don't.)
+/// Copy every hash list found under `dir` up into the mod's `META/`.
+///
+/// The lists are written at the WAD root, next to the assets they name, which is where a
+/// tool that opens one WAD expects them. A fantome also wants them in `META/`, because
+/// that is the one place a reader can look WITHOUT knowing the mod's WAD layout, and it
+/// is what the community spec asks for.
+///
+/// Both copies are kept: the WAD-root one travels with the WAD if it is ever extracted
+/// on its own, the META one describes the package. Contents are unioned per universe, so
+/// a multi-WAD mod gets one complete list rather than the last WAD's.
+///
+/// Never destructive: an existing META list is merged into, not replaced.
+fn hydrate_meta_hash_lists(dir: &Path) {
+    use std::collections::BTreeSet;
+
+    let meta = dir.join("META");
+    let mut all = Vec::new();
+    walk_all(dir, &mut all);
+
+    for universe in ["files.txt", BIN_HASHES_TXT] {
+        let mut lines: BTreeSet<String> = BTreeSet::new();
+        for f in &all {
+            if f.file_name().and_then(|n| n.to_str()) != Some(universe) {
+                continue;
+            }
+            for line in std::fs::read_to_string(f).unwrap_or_default().lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                // A legacy `<hex> <name>` row keeps only its name half: the file it now
+                // lives in already says which hash function applies.
+                let value = match line.split_once(char::is_whitespace) {
+                    Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
+                        rest.trim()
+                    }
+                    _ => line,
+                };
+                lines.insert(value.to_string());
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        if let Err(e) = std::fs::create_dir_all(&meta) {
+            tracing::warn!("could not create {}: {e}", meta.display());
+            return;
+        }
+        write_name_list(&meta.join(universe), &lines);
+    }
+}
+
 fn zip_fantome(dir: &Path) -> Result<String, String> {
     use std::io::Write;
 
@@ -2031,6 +2129,10 @@ fn zip_fantome(dir: &Path) -> Result<String, String> {
     let info_text = std::fs::read_to_string(&info_path).map_err(|e| e.to_string())?;
     serde_json::from_str::<serde_json::Value>(&info_text)
         .map_err(|e| format!("META/info.json is invalid: {e}"))?;
+
+    // Lift the hash lists into META/ before the walk, so the archive carries both the
+    // WAD-root copies and the package-level ones.
+    hydrate_meta_hash_lists(dir);
 
     let parent = dir.parent().unwrap_or_else(|| Path::new("."));
     let out_path = unique_file(parent, &sanitize_file_name(&file_stem(dir)), "fantome");
