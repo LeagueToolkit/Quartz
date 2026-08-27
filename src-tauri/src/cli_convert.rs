@@ -1234,21 +1234,11 @@ fn pack_modpkg(dir: &Path) -> Result<String, String> {
         if !layer_dir.is_dir() {
             continue;
         }
-        let layer_name = name(&layer_dir);
-
-        if !declared.contains(&layer_name) {
-            let mut layer = if layer_name == ltk_modpkg::BASE_LAYER_NAME {
-                ModpkgLayerBuilder::base()
-            } else {
-                ModpkgLayerBuilder::new(&layer_name)
-                    .map_err(|e| format!("invalid layer name {layer_name:?}: {e}"))?
-            };
-            if let Some(priority) = priorities.get(&layer_name) {
-                layer = layer.with_priority(*priority);
-            }
-            builder = builder.with_layer(layer);
-            declared.push(layer_name.clone());
-        }
+        // Lowercased because a layer name is a slug (ASCII lowercase, digits, hyphens)
+        // while Windows will hand back whatever case the directory happens to carry.
+        // `Slug::new` VALIDATES rather than normalizes, so a `Base/` folder would be
+        // rejected outright instead of being read as the base layer.
+        let layer_name = name(&layer_dir).to_ascii_lowercase();
 
         let Ok(wad_entries) = std::fs::read_dir(&layer_dir) else {
             continue;
@@ -1289,6 +1279,25 @@ fn pack_modpkg(dir: &Path) -> Result<String, String> {
                     .with_compression(ModpkgCompression::for_extension(ext))
                     .with_layer(&layer_name)
                     .with_wad(&wad_name);
+
+                // The layer is declared HERE, at its first real chunk, not when its
+                // directory is seen. A top-level folder that holds no chunks (a stray
+                // `META/`, a scratch dir) would otherwise be declared as an empty
+                // phantom layer, or fail slug validation and abort a pack that had
+                // nothing wrong with it.
+                if !declared.contains(&layer_name) {
+                    let mut layer = if layer_name == ltk_modpkg::BASE_LAYER_NAME {
+                        ModpkgLayerBuilder::base()
+                    } else {
+                        ModpkgLayerBuilder::new(&layer_name)
+                            .map_err(|e| format!("invalid layer name {layer_name:?}: {e}"))?
+                    };
+                    if let Some(priority) = priorities.get(&layer_name) {
+                        layer = layer.with_priority(*priority);
+                    }
+                    builder = builder.with_layer(layer);
+                    declared.push(layer_name.clone());
+                }
 
                 chunk_data.insert(cb.key(), bytes);
                 builder = builder.with_chunk(cb);
