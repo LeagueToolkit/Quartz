@@ -514,24 +514,24 @@ fn split_one(bin_path: &Path, out_dir: &Path, kind: &str) -> Result<Option<SkinS
         version: bin.version,
         ..Bin::new()
     };
-    // Preserve the source bin's hash->path trailer across this reserialization —
-    // write_bin produces a clean body, so without re-appending it the repathed
-    // file=/hash= custom paths would be lost. Both the split sibling and the
-    // rewritten source carry it (extra entries in the sibling are harmless).
-    let src_trailer = crate::bin::bin_trailer::read_trailer(&data);
-
+    // The bin is written CLEAN. Quartz no longer appends the hash->path trailer:
+    // trailing bytes after a bin's declared end are not part of the format, so every
+    // other tool has to strip them, a reserialization silently drops them anyway, and
+    // one measured file grew 40%. `files.txt` carries the same hash->path record
+    // beside the archive, where nothing has to know about it to stay correct.
+    //
+    // Reads are kept (see `read_trailer` callers) so a bin that already carries one
+    // still resolves its custom paths.
     let new_body = crate::bin::write_bin(&new_bin)
         .map_err(|e| Error::InvalidInput(format!("Failed to serialize split BIN: {}", e)))?;
-    let new_bytes = crate::bin::bin_trailer::append_trailer(&new_body, &src_trailer);
-    std::fs::write(&new_bin_abs, &new_bytes).map_err(|e| Error::io_with_path(e, &new_bin_abs))?;
+    std::fs::write(&new_bin_abs, &new_body).map_err(|e| Error::io_with_path(e, &new_bin_abs))?;
 
     if !bin.linked.iter().any(|l| l.eq_ignore_ascii_case(&link_str)) {
         bin.linked.push(link_str.clone());
     }
     let src_body = crate::bin::write_bin(&bin)
         .map_err(|e| Error::InvalidInput(format!("Failed to serialize source BIN: {}", e)))?;
-    let src_bytes = crate::bin::bin_trailer::append_trailer(&src_body, &src_trailer);
-    std::fs::write(bin_path, &src_bytes).map_err(|e| Error::io_with_path(e, bin_path))?;
+    std::fs::write(bin_path, &src_body).map_err(|e| Error::io_with_path(e, bin_path))?;
 
     Ok(Some(SkinSplitFile {
         kind: kind.to_string(),
@@ -993,10 +993,9 @@ fn consolidate_assets_core(
     if touched {
         let body = crate::bin::write_bin(&bin)
             .map_err(|e| Error::InvalidInput(format!("Failed to serialize BIN: {}", e)))?;
-        // Preserve the hash->path trailer across this reserialization.
-        let trailer = crate::bin::bin_trailer::read_trailer(&data);
-        let bytes = crate::bin::bin_trailer::append_trailer(&body, &trailer);
-        std::fs::write(bin_path, &bytes).map_err(|e| Error::io_with_path(e, bin_path))?;
+        // Written clean — the trailer is no longer produced; see the note in
+        // `split_skin_bin` for why, and `files.txt` for where the record lives now.
+        std::fs::write(bin_path, &body).map_err(|e| Error::io_with_path(e, bin_path))?;
         bin_rewritten = true;
     }
 

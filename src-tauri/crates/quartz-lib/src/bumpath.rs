@@ -647,7 +647,10 @@ pub fn repath_many(
         for (hex, path) in crate::bin::bin_trailer::read_trailer(&data) {
             trailer.entry(hex).or_insert(path);
         }
-        let bytes = crate::bin::bin_trailer::append_trailer(&body, &trailer);
+        // Written clean: Quartz no longer appends the hash->path trailer. The record
+        // lives in `files.txt` beside the archive instead of in bytes past the bin's
+        // declared end, which every other tool had to strip.
+        let bytes = body;
         // \\?\-prefix the write so combined multi-skin BINs (>260-char names) don't
         // fail with OS error 123 on Windows.
         std::fs::write(crate::longpath::to_extended(&out_path), bytes)

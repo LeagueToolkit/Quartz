@@ -466,7 +466,9 @@ fn repath_bin_file(
     if modified_count > 0 || !hash_ctx.trailer.is_empty() {
         let body = write_bin(&bin)
             .map_err(|e| Error::InvalidInput(format!("Failed to write BIN: {}", e)))?;
-        let new_data = crate::bin::bin_trailer::append_trailer(&body, &hash_ctx.trailer);
+        // Written clean: Quartz no longer appends the hash->path trailer. `files.txt`
+        // carries the same record beside the archive, where no reader has to strip it.
+        let new_data = body;
 
         fs::write(bin_path, new_data).map_err(|e| Error::io_with_path(e, bin_path))?;
         tracing::debug!(
