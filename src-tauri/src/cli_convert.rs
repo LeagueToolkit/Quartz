@@ -1951,7 +1951,15 @@ fn wad_to_modpkg(wad_path: &Path) -> Result<String, String> {
     // that no dictionary knows. Applying it before the build is what keeps those names.
     let mut wads = vec![(wad_name.clone(), chunks)];
     let mut known = std::collections::HashMap::new();
-    for candidate in [parent.join("files.txt"), parent.join("META").join("files.txt")] {
+    // The `game` table in every place it can sit, plus the pre-standard `files.txt`.
+    // Only asset-path tables are consulted: an fnv1a32 name cannot name a WAD chunk.
+    let game_table = hash_table_name("game");
+    for candidate in [
+        parent.join(&game_table),
+        parent.join("META").join("hashes").join(&game_table),
+        parent.join("files.txt"),
+        parent.join("META").join("files.txt"),
+    ] {
         if let Ok(text) = std::fs::read_to_string(&candidate) {
             known.extend(parse_files_txt(&text));
         }
@@ -1999,9 +2007,15 @@ fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
         let rel_str = rel.to_string_lossy().replace('\\', "/");
         let lower = rel_str.to_ascii_lowercase();
 
-        // A `files.txt` anywhere in the archive names repathed assets that exist in no
-        // dictionary; both the META copy and a WAD-root copy are read.
-        if lower.ends_with("files.txt") {
+        // A hashtable anywhere in the archive names assets that exist in no dictionary,
+        // so it is READ here. `game.hashes.txt` and the pre-standard `files.txt` both
+        // hold asset paths; the fnv1a32 tables name bin internals, which cannot name a
+        // chunk, so those are left to be packed with everything else and travel inside
+        // the WAD.
+        //
+        // Both the META copy and the WAD-root copy are read, and the names are what stop
+        // a chunk landing hash-named in the modpkg.
+        if lower.ends_with("files.txt") || lower.ends_with("game.hashes.txt") {
             use std::io::Read;
             let mut text = String::new();
             if entry.read_to_string(&mut text).is_ok() {
