@@ -483,6 +483,17 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             }),
         ];
 
+        /* Hand wavesurfer the PCM we already decoded rather than letting it fetch
+           the blob URL itself: the webview CSP does not allow blob: in
+           connect-src, so that fetch is refused and the waveform never appears.
+           Supplying peaks + duration also skips a second decode of the same
+           bytes. The URL is still set so the <audio> element can play it, which
+           goes through media-src and is allowed. */
+        const decoded = audioBufferRef.current;
+        const peaks = decoded
+            ? Array.from({ length: decoded.numberOfChannels }, (_, ch) => decoded.getChannelData(ch))
+            : undefined;
+
         const ws = WaveSurfer.create({
             container,
             height: 110,
@@ -495,6 +506,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             barRadius: 2,
             normalize: true,
             url,
+            ...(peaks ? { peaks, duration: decoded!.duration } : {}),
             plugins,
         });
         wsRef.current = ws;

@@ -77,7 +77,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "script-src": "'self' blob: 'unsafe-eval'",
         "img-src": "'self' data: https: blob: asset: http://asset.localhost https://asset.localhost",
-        "connect-src": "'self' http://ipc.localhost https://github.com https://api.github.com https://raw.githubusercontent.com https://ddragon.leagueoflegends.com https://raw.communitydragon.org asset: http://asset.localhost https://asset.localhost",
+        "connect-src": "'self' blob: data: http://ipc.localhost https://github.com https://api.github.com https://raw.githubusercontent.com https://ddragon.leagueoflegends.com https://raw.communitydragon.org asset: http://asset.localhost https://asset.localhost",
         "worker-src": "'self' blob:",
         "media-src": "'self' blob: asset: http://asset.localhost https://asset.localhost"
       },
