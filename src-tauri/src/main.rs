@@ -319,6 +319,7 @@ fn main() {
             commands::audio::audio_convert_to_wem,
             commands::audio::audio_convert_wavs_to_wem,
             commands::audio::audio_decode_to_wav,
+            commands::audio::audio_decode_to_playable,
             commands::audio::audio_amplify_wem,
             commands::audio::bnk_scan_mod_folder,
             commands::audio::bnk_extract_banks_from_game,

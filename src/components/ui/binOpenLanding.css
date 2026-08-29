@@ -40,6 +40,13 @@
     font-size: .78rem;
 }
 
+.bin-open-landing__footnote {
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: .65rem;
+    opacity: .75;
+}
+
 .bin-open-recent {
     width: min(520px, 90%);
     max-height: 268px;

@@ -772,6 +772,69 @@ pub async fn audio_decode_to_wav(data: Vec<u8>) -> Result<String, String> {
     .map_err(|e| format!("decode task failed: {e}"))?
 }
 
+/// Decoded audio plus the container it actually came back in.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodedAudioPayload {
+    pub data_base64: String,
+    /// "wav" or "ogg" — the caller picks the right MIME type from this.
+    pub format: String,
+}
+
+/// Decode a WEM to playable bytes, preferring the native decoder.
+///
+/// Unlike `audio_decode_to_wav`, an OGG result is returned as-is instead of
+/// being discarded: most League WEMs are Wwise Vorbis, and the webview decodes
+/// Ogg Vorbis natively, so this avoids needing vgmstream for the common case.
+#[tauri::command]
+pub async fn audio_decode_to_playable(data: Vec<u8>) -> Result<DecodedAudioPayload, String> {
+    tokio::task::spawn_blocking(move || {
+        // Native decoder: handles both the PCM ("wav") and Vorbis ("ogg") cases.
+        match wem::decode_wem(&data) {
+            Ok(decoded) => {
+                return Ok(DecodedAudioPayload {
+                    data_base64: base64::engine::general_purpose::STANDARD.encode(decoded.data),
+                    format: decoded.format,
+                });
+            }
+            Err(native_error) => {
+                // Fall through to vgmstream, but keep the reason for the message.
+                let temp = wwise_temp_dir()?;
+                std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
+                let uid = unique_id();
+
+                let vgm = vgmstream_exe()?;
+                if !vgm.exists() {
+                    return Err(format!(
+                        "could not decode audio ({native_error}) and vgmstream is not installed"
+                    ));
+                }
+                let in_path = temp.join(format!("split_in_{uid}.bin"));
+                std::fs::write(&in_path, &data).map_err(|e| e.to_string())?;
+                let out = temp.join(format!("split_{uid}.wav"));
+                let res = run_hidden(
+                    &vgm,
+                    &["-o", &out.to_string_lossy(), &in_path.to_string_lossy()],
+                    vgm.parent(),
+                );
+                let _ = std::fs::remove_file(&in_path);
+                if let Err(error) = res {
+                    let _ = std::fs::remove_file(&out);
+                    return Err(error);
+                }
+                let wav = std::fs::read(&out).map_err(|e| format!("read decoded wav failed: {e}"));
+                let _ = std::fs::remove_file(&out);
+                Ok(DecodedAudioPayload {
+                    data_base64: base64::engine::general_purpose::STANDARD.encode(wav?),
+                    format: "wav".into(),
+                })
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("decode task failed: {e}"))?
+}
+
 /// Write raw bytes to a path, creating parent directories. Used by the audio
 /// splitter to save sliced WAV segments the frontend encodes in JS.
 #[tauri::command]

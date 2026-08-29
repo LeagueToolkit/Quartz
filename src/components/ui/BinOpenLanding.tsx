@@ -20,6 +20,13 @@ export interface BinOpenLandingProps {
     onOpen: () => void;
     onOpenRecent: (path: string) => void;
     onRemoveRecent: (path: string) => void;
+    /* Wording overrides so non-bin callers (e.g. the Audio Splitter) get the
+       same layout without the bin-specific copy. */
+    title?: string;
+    description?: string;
+    actionLabel?: string;
+    recentTitle?: string;
+    footnote?: string;
 }
 
 /** The same no-document landing and history layout used by Bin Editor. */
@@ -30,6 +37,11 @@ export function BinOpenLanding({
     onOpen,
     onOpenRecent,
     onRemoveRecent,
+    title = 'No Bin Loaded',
+    description = 'Drop a .bin here',
+    actionLabel = 'Open Bin',
+    recentTitle = 'Recent Bins',
+    footnote,
 }: BinOpenLandingProps) {
     return (
         <div className={`bin-open-landing${dragActive ? ' is-dragging' : ''}`}>
@@ -40,17 +52,18 @@ export function BinOpenLanding({
                     strokeWidth={1.5}
                     style={{ display: 'block', marginBottom: 16 }}
                 />
-                <div className="bin-open-landing__title">No Bin Loaded</div>
-                <div className="bin-open-landing__description">Drop a .bin here</div>
+                <div className="bin-open-landing__title">{title}</div>
+                <div className="bin-open-landing__description">{description}</div>
                 <button type="button" className="dl-btn dl-btn--primary" onClick={onOpen} disabled={busy}>
                     <span className="dl-icon"><FolderOpen size={14} /></span>
-                    <span>Open Bin</span>
+                    <span>{actionLabel}</span>
                 </button>
+                {footnote && <div className="bin-open-landing__footnote">{footnote}</div>}
             </div>
 
             {recentBins.length > 0 && (
-                <section className="bin-open-recent" aria-label="Recent bins">
-                    <div className="bin-open-recent__heading">Recent Bins</div>
+                <section className="bin-open-recent" aria-label={recentTitle}>
+                    <div className="bin-open-recent__heading">{recentTitle}</div>
                     <div className="bin-open-recent__list">
                         {recentBins.map((bin) => (
                             <div

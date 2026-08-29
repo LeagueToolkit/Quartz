@@ -12,11 +12,13 @@ import {
     Box, Typography, Slider, Tooltip, LinearProgress, Popover,
 } from '@mui/material';
 import {
-    Close, PlayArrow, Pause, Stop, FolderOpen, Download, Upload,
+    Close, PlayArrow, Pause, Stop, Download, Upload,
     Delete, ZoomIn, ZoomOut, ContentCut, SkipPrevious, VolumeUp, AutoFixHigh, ViewStream, Add,
 } from '@mui/icons-material';
+import { FolderOpen as FolderOpenIcon } from 'lucide-react';
 import { pickPath } from '@/components/explorer';
-import { DropOverlay } from '@/components/ui';
+import { DropOverlay, BinOpenLanding } from '@/components/ui';
+import { useUiPrefsStore, type SavedAudioSegment } from '@/lib/stores/uiPrefsStore';
 import { explorerResolvePath } from '@/lib/api/explorer';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { join } from '@tauri-apps/api/path';
@@ -26,11 +28,52 @@ import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import ZoomPlugin from 'wavesurfer.js/dist/plugins/zoom.esm.js';
 import HoverPlugin from 'wavesurfer.js/dist/plugins/hover.esm.js';
 import { log } from '@/lib/util/logger';
-import { decodeToWav, readFileBytes, writeFileBytes, convertWavsToWem } from '../utils/backend';
+import { decodeToPlayable, readFileBytes, writeFileBytes, convertWavsToWem } from '../utils/backend';
 import type { SplitterFile, SplitterSegment } from '../types';
 import './AudioSplitter.css';
 
-interface Region { id: string; name: string; start: number; end: number }
+interface Region { id: string; name: string; start: number; end: number; colorIndex: number }
+
+/* One open file. The decoded buffer and the WAV bytes are held per tab so that
+   switching back restores the exact waveform and segments without re-decoding;
+   `bytes` is what the waveform was mounted from (already WAV for WEM sources). */
+interface SplitterTab {
+    id: string;
+    name: string;
+    /* Set only for files opened off disk; drives the recents list and the
+       saved-segment lookup. Audio handed in from a bank has no path. */
+    path?: string;
+    bytes: Uint8Array | null;
+    mimeType: string;
+    audioBuffer: AudioBuffer | null;
+    regions: Region[];
+    activeRegionId: string | null;
+    regionSeq: number;
+    duration: number;
+    zoom: number;
+    wasWem: boolean;
+    nodeId?: string;
+    status: 'empty' | 'loading' | 'ready' | 'error';
+}
+
+let tabSeq = 0;
+function makeTab(partial: Partial<SplitterTab> = {}): SplitterTab {
+    return {
+        id: `tab_${++tabSeq}`,
+        name: '',
+        bytes: null,
+        mimeType: 'audio/wav',
+        audioBuffer: null,
+        regions: [],
+        activeRegionId: null,
+        regionSeq: 0,
+        duration: 0,
+        zoom: 1,
+        wasWem: false,
+        status: 'empty',
+        ...partial,
+    };
+}
 interface EditingTime { id: string; field: 'start' | 'end' }
 
 function fmtTime(sec: number): string {
@@ -82,11 +125,22 @@ function encodeWavSlice(buffer: AudioBuffer, start: number, end: number): Uint8A
     return new Uint8Array(out);
 }
 
-const REGION_COLORS = [
-    'rgba(99,179,237,0.28)', 'rgba(154,230,180,0.28)', 'rgba(252,176,64,0.28)',
-    'rgba(183,148,246,0.28)', 'rgba(245,101,101,0.28)', 'rgba(129,230,217,0.28)',
-    'rgba(246,173,85,0.28)', 'rgba(198,246,213,0.28)',
+/* Base RGB per segment slot; the alpha carries the selection state so the
+   active region reads as lit up against its dimmed neighbours. */
+const REGION_RGB = [
+    '99,179,237', '154,230,180', '252,176,64', '183,148,246',
+    '245,101,101', '129,230,217', '246,173,85', '198,246,213',
 ];
+const REGION_ALPHA_IDLE = 0.18;
+const REGION_ALPHA_ACTIVE = 0.46;
+
+function regionRgb(colorIndex: number): string {
+    return REGION_RGB[((colorIndex % REGION_RGB.length) + REGION_RGB.length) % REGION_RGB.length];
+}
+
+function regionColor(colorIndex: number, isActive: boolean): string {
+    return `rgba(${regionRgb(colorIndex)},${isActive ? REGION_ALPHA_ACTIVE : REGION_ALPHA_IDLE})`;
+}
 
 interface DetectOptions {
     thresholdDb?: number;
@@ -155,6 +209,21 @@ function detectSegments(
     return result;
 }
 
+/* Resolve once the element has a usable width, giving the browser up to a few
+   animation frames to run the layout pass that un-hides the wave surface.
+   Resolves anyway after the budget so a load never stalls on a hidden panel. */
+function waitForContainerWidth(el: HTMLElement, maxFrames = 30): Promise<void> {
+    return new Promise((resolve) => {
+        let frames = 0;
+        const check = () => {
+            if (el.clientWidth > 0 || frames >= maxFrames) { resolve(); return; }
+            frames++;
+            requestAnimationFrame(check);
+        };
+        check();
+    });
+}
+
 function safeFileStem(name: string): string {
     return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'segment';
 }
@@ -192,15 +261,18 @@ const RegionRow = memo(function RegionRow({
     onSeek, onSetEditingName, onRename, onSetEditingTime, onTimeEdit, onExport, onRemove,
 }: RegionRowProps) {
     const dur = reg.end - reg.start;
+    /* Tint the row with the same hue the segment has on the waveform, so the
+       table and the regions read as one colour-coded set. */
+    const rgb = regionRgb(reg.colorIndex);
     return (
         <Box
             onClick={() => onSeek(reg)}
             sx={{
                 display: 'grid', gridTemplateColumns: '28px 1fr 90px 90px 72px 58px', gap: 0, px: 1.5, py: 0.4, cursor: 'pointer', alignItems: 'center',
                 borderBottom: '1px solid var(--border)',
-                background: isActive ? 'color-mix(in oklab, var(--accent-primary) 12%, transparent)' : 'transparent',
-                borderLeft: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' },
+                background: `rgba(${rgb},${isActive ? 0.22 : 0.07})`,
+                borderLeft: `2px solid ${isActive ? `rgb(${rgb})` : 'transparent'}`,
+                '&:hover': { background: `rgba(${rgb},${isActive ? 0.28 : 0.14})` },
             }}
         >
             <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{index + 1}</Typography>
@@ -217,7 +289,7 @@ const RegionRow = memo(function RegionRow({
             ) : (
                 <Typography
                     onDoubleClick={(e) => { e.stopPropagation(); onSetEditingName(reg.id); }}
-                    sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
+                    sx={{ fontSize: '0.72rem', color: `rgb(${rgb})`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
                     title="Double-click to rename"
                 >{reg.name}</Typography>
             )}
@@ -291,10 +363,38 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
     const blobUrlRef = useRef<string | null>(null);
     const sourceWasWem = useRef(false);
     const volumeRef = useRef(0.05);
+    const zoomRef = useRef(1);
     const currentTimeRef = useRef(0);
     const currentTimeLabelRef = useRef<HTMLSpanElement>(null);
     const loadGenerationRef = useRef(0);
+    const loadedInitialFileRef = useRef<SplitterFile | null>(null);
+    /* Set while a tab restore re-adds saved regions. region-created fires
+       synchronously from addRegion, so it pops the matching entry from here to
+       keep the original name, colour and numbering instead of inventing new ones. */
+    const restoringRegions = useRef<Region[] | null>(null);
     const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const recentAudioFiles = useUiPrefsStore((s) => s.recentAudioFiles);
+    const pushRecentAudioFile = useUiPrefsStore((s) => s.pushRecentAudioFile);
+    const removeRecentAudioFile = useUiPrefsStore((s) => s.removeRecentAudioFile);
+    const saveAudioSegments = useUiPrefsStore((s) => s.saveAudioSegments);
+
+    const [tabs, setTabs] = useState<SplitterTab[]>(() => [makeTab()]);
+    const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0].id);
+    const activeTabIdRef = useRef(activeTabId);
+    activeTabIdRef.current = activeTabId;
+    /* `tabsRef` is the authoritative tab list, not a per-render mirror.
+       Assigning it on every render would clobber writes that are still queued,
+       which let a close be silently undone and left the tab stuck on screen.
+       Every mutation goes through updateTabs so the ref and the state advance
+       together and reads always see the newest list. */
+    const tabsRef = useRef(tabs);
+    const updateTabs = useCallback((next: SplitterTab[] | ((prev: SplitterTab[]) => SplitterTab[])) => {
+        const resolved = typeof next === 'function' ? next(tabsRef.current) : next;
+        if (resolved === tabsRef.current) return;
+        tabsRef.current = resolved;
+        setTabs(resolved);
+    }, []);
 
     const [isReady, setIsReady] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -322,21 +422,6 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         if (ms > 0) flashTimerRef.current = setTimeout(() => setExportProgress(''), ms);
     }, []);
 
-    const resetState = useCallback(() => {
-        setIsReady(false);
-        setIsPlaying(false);
-        setRegions([]);
-        setActiveRegionId(null);
-        setDuration(0);
-        currentTimeRef.current = 0;
-        if (currentTimeLabelRef.current) currentTimeLabelRef.current.textContent = fmtTime(0);
-        setZoom(1);
-        setLoadedName('');
-        regionCount.current = 0;
-        audioBufferRef.current = null;
-        sourceWasWem.current = false;
-    }, []);
-
     /* (Re)build wavesurfer for a fresh blob URL and decode the same bytes into an
        AudioBuffer for slicing. */
     const mountWaveform = useCallback(async (
@@ -344,6 +429,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         name: string,
         mimeType: string,
         generation: number,
+        ownerTabId?: string,
     ) => {
         const container = waveContainerRef.current;
         if (!container) throw new Error('Waveform surface is unavailable');
@@ -362,6 +448,13 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         } finally {
             void ctx.close();
         }
+        if (generation !== loadGenerationRef.current) return;
+
+        /* The wave surface is display:none until a load starts, and a wavesurfer
+           built inside a zero-width container renders no canvas at all (it skips
+           drawing and still emits "ready", leaving a blank waveform). Wait for
+           the layout pass that reveals the container before creating it. */
+        await waitForContainerWidth(container);
         if (generation !== loadGenerationRef.current) return;
 
         wsRef.current?.destroy();
@@ -407,24 +500,28 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         wsRef.current = ws;
 
         // Drag on empty waveform to create a region.
-        regionsPlugin.enableDragSelection({ color: REGION_COLORS[0] });
+        regionsPlugin.enableDragSelection({ color: regionColor(0, false) });
 
         regionsPlugin.on('region-created', (region: WsRegion) => {
-            const idx = (regionCount.current += 1);
-            const color = REGION_COLORS[(idx - 1) % REGION_COLORS.length];
-            if (!region.content) {
-                const label = document.createElement('span');
-                label.textContent = `segment_${String(idx).padStart(3, '0')}`;
-                region.setOptions({ color, content: label });
-            } else {
-                region.setOptions({ color });
+            /* Names live in the segment table, not on the waveform: overlapping
+               regions used to stack their labels into unreadable text. */
+            region.setOptions({ content: undefined });
+
+            // Re-adding a saved segment during a tab switch: keep its identity.
+            const restored = restoringRegions.current?.shift();
+            if (restored) {
+                region.setOptions({ color: regionColor(restored.colorIndex, false) });
+                setRegions((prev) => (prev.some((r) => r.id === region.id)
+                    ? prev
+                    : [...prev, { ...restored, id: region.id, start: region.start, end: region.end }]));
+                return;
             }
+
+            const idx = (regionCount.current += 1);
+            region.setOptions({ color: regionColor(idx - 1, false) });
             setRegions((prev) => {
                 if (prev.some((r) => r.id === region.id)) return prev;
-                const name = typeof region.content === 'string'
-                    ? region.content
-                    : (region.content?.textContent || `segment_${String(idx).padStart(3, '0')}`);
-                return [...prev, { id: region.id, name, start: region.start, end: region.end }];
+                return [...prev, { id: region.id, name: `segment_${String(idx).padStart(3, '0')}`, start: region.start, end: region.end, colorIndex: idx - 1 }];
             });
             setActiveRegionId(region.id);
         });
@@ -439,7 +536,20 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             region.play();
         });
 
-        ws.on('ready', () => { setDuration(ws.getDuration()); setIsReady(true); setIsLoading(false); });
+        /* Settled by whichever of ready/error comes first. Surfacing the error as
+           a rejection lets loadSource fall back to the native decoder instead of
+           leaving the panel on its empty state with no explanation. */
+        let settle: (err?: unknown) => void = () => {};
+        const mounted = new Promise<void>((resolve, reject) => {
+            settle = (err?: unknown) => (err === undefined ? resolve() : reject(err));
+        });
+
+        ws.on('ready', () => {
+            setDuration(ws.getDuration());
+            setIsReady(true);
+            setIsLoading(false);
+            settle();
+        });
         ws.on('timeupdate', (t: number) => {
             currentTimeRef.current = t;
             if (currentTimeLabelRef.current) currentTimeLabelRef.current.textContent = fmtTime(t);
@@ -447,20 +557,51 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         ws.on('play', () => setIsPlaying(true));
         ws.on('pause', () => setIsPlaying(false));
         ws.on('finish', () => setIsPlaying(false));
-        ws.on('error', (err) => { log.error('[AudioSplitter] wavesurfer error', err); setIsLoading(false); });
+        ws.on('error', (err) => {
+            log.error('[AudioSplitter] wavesurfer error', err);
+            settle(err instanceof Error ? err : new Error(String(err)));
+        });
+        ws.on('destroy', () => settle());
         ws.setVolume(volumeRef.current);
         setLoadedName(name);
-    }, []);
+
+        await mounted;
+
+        /* A container that gained its width only after render draws no canvas
+           until something invalidates the layout; nudge it once we are visible. */
+        if (generation === loadGenerationRef.current && container.clientWidth > 0) {
+            ws.zoom(zoomRef.current);
+        }
+
+        /* Record what this tab is holding so switching away and back can restore
+           it without touching the disk or the decoder again. */
+        const ownerId = ownerTabId ?? activeTabIdRef.current;
+        updateTabs((prev) => prev.map((tab) => (tab.id === ownerId
+            ? {
+                ...tab,
+                name,
+                bytes: audioBytes,
+                mimeType,
+                audioBuffer: audioBufferRef.current,
+                duration: ws.getDuration(),
+                status: 'ready',
+            }
+            : tab)));
+    }, [updateTabs]);
 
     /* Load any source (path / bytes) — decode to WAV in Rust when needed, then
        hand the WAV bytes to the waveform + slicer. */
-    const loadSource = useCallback(async (opts: { path?: string; data?: Uint8Array; name: string; isWem?: boolean }) => {
+    const loadSource = useCallback(async (opts: { path?: string; data?: Uint8Array; name: string; isWem?: boolean; tabId?: string; nodeId?: string }) => {
         const generation = ++loadGenerationRef.current;
+        const tabId = opts.tabId ?? activeTabIdRef.current;
         setIsLoading(true);
         setIsReady(false);
         setRegions([]);
         setActiveRegionId(null);
         regionCount.current = 0;
+        updateTabs((prev) => prev.map((tab) => (tab.id === tabId
+            ? { ...tab, name: opts.name, path: opts.path ?? tab.path, status: 'loading', regions: [], activeRegionId: null, regionSeq: 0, nodeId: opts.nodeId ?? tab.nodeId }
+            : tab)));
         try {
             let rawBytes: Uint8Array;
             if (opts.data) {
@@ -481,51 +622,120 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             if (generation !== loadGenerationRef.current) return;
 
             if (isWem) {
-                const wavBytes = await decodeToWav(rawBytes);
+                /* Vorbis WEMs decode to OGG, which the webview plays as-is;
+                   only PCM ones come back as WAV. Forcing WAV here would drop
+                   the native result and fall through to vgmstream. */
+                const playable = await decodeToPlayable(rawBytes);
                 if (generation !== loadGenerationRef.current) return;
-                await mountWaveform(wavBytes, opts.name, 'audio/wav', generation);
+                await mountWaveform(playable.data, opts.name, playable.mimeType, generation, tabId);
             } else {
                 const mimeType = isWav ? 'audio/wav' : isMp3 ? 'audio/mpeg' : isOgg ? 'audio/ogg' : 'application/octet-stream';
                 try {
                     // Web Audio handles ordinary WAV/MP3/OGG files directly, so
                     // opening them does not depend on the optional Wwise tools.
-                    await mountWaveform(rawBytes, opts.name, mimeType, generation);
+                    await mountWaveform(rawBytes, opts.name, mimeType, generation, tabId);
                 } catch (browserDecodeError) {
                     log.warn('[AudioSplitter] browser decode failed; trying native decoder', browserDecodeError);
-                    const wavBytes = await decodeToWav(rawBytes);
+                    const playable = await decodeToPlayable(rawBytes);
                     if (generation !== loadGenerationRef.current) return;
-                    await mountWaveform(wavBytes, opts.name, 'audio/wav', generation);
+                    await mountWaveform(playable.data, opts.name, playable.mimeType, generation, tabId);
+                }
+            }
+            if (generation !== loadGenerationRef.current) return;
+
+            /* Remember the file and put back whatever segments were saved against
+               it the last time it was open. */
+            if (opts.path) {
+                pushRecentAudioFile(opts.path);
+                const saved = useUiPrefsStore.getState().recentAudioFiles
+                    .find((f) => f.path === opts.path)?.segments ?? [];
+                const plugin = regionsPluginRef.current;
+                if (saved.length > 0 && plugin) {
+                    restoringRegions.current = saved.map((seg, i) => ({
+                        id: `saved_${i}`,
+                        name: seg.name,
+                        start: seg.start,
+                        end: seg.end,
+                        colorIndex: seg.colorIndex,
+                    }));
+                    try {
+                        for (const seg of saved) {
+                            plugin.addRegion({
+                                start: seg.start,
+                                end: seg.end,
+                                color: regionColor(seg.colorIndex, false),
+                                drag: true,
+                                resize: true,
+                            });
+                        }
+                    } finally {
+                        restoringRegions.current = null;
+                    }
+                    regionCount.current = saved.length;
+                    flash(`Restored ${saved.length} saved segment(s)`);
                 }
             }
         } catch (e) {
             log.error('[AudioSplitter] load error', e);
+            /* A load that lost its race, or whose tab was closed mid-flight, must
+               not touch the UI or resurrect the tab it was loading into. */
+            if (generation !== loadGenerationRef.current) return;
             setIsLoading(false);
+            updateTabs((prev) => prev.map((tab) => (tab.id === tabId ? { ...tab, status: 'error' } : tab)));
             flash(`Failed to load audio: ${(e as Error).message}`);
         }
-    }, [mountWaveform, flash]);
+    }, [mountWaveform, flash, pushRecentAudioFile, updateTabs]);
 
+    /* Closing the splitter keeps the decoded audio and its segments in memory so
+       reopening lands back on the same waveform. Only playback and transient
+       chrome are reset here; teardown happens when the panel unmounts. */
     useEffect(() => {
         if (!isOpen) {
-            loadGenerationRef.current++;
-            wsRef.current?.destroy();
-            wsRef.current = null;
-            if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
-            resetState();
+            wsRef.current?.pause();
+            setIsPlaying(false);
             setIsDragOver(false);
             if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
         }
-    }, [isOpen, resetState]);
+    }, [isOpen]);
 
+    /* Release the waveform, blob URL and decoded buffer for real on unmount. */
+    useEffect(() => () => {
+        loadGenerationRef.current++;
+        wsRef.current?.destroy();
+        wsRef.current = null;
+        if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+        audioBufferRef.current = null;
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    }, []);
+
+    /* Load a handed-in file once. Reopening the panel with the same file must not
+       re-decode it and throw away the segments already marked. */
     useEffect(() => {
-        if (isOpen && initialFile && (initialFile.data || initialFile.path)) {
-            void loadSource({
-                path: initialFile.path,
-                data: initialFile.data,
-                name: initialFile.name || 'audio',
-                isWem: initialFile.isWem,
-            });
+        if (!isOpen || !initialFile || !(initialFile.data || initialFile.path)) return;
+        if (loadedInitialFileRef.current === initialFile) return;
+        loadedInitialFileRef.current = initialFile;
+
+        /* Reuse the current tab when it is still empty, otherwise open the file
+           in a new one so existing work is never overwritten. */
+        let targetId = activeTabIdRef.current;
+        const current = tabsRef.current.find((tab) => tab.id === targetId);
+        if (!current || current.status !== 'empty') {
+            const tab = makeTab();
+            targetId = tab.id;
+            updateTabs([...tabsRef.current, tab]);
+            activeTabIdRef.current = tab.id;
+            setActiveTabId(tab.id);
         }
-    }, [isOpen, initialFile, loadSource]);
+
+        void loadSource({
+            path: initialFile.path,
+            data: initialFile.data,
+            name: initialFile.name || 'audio',
+            isWem: initialFile.isWem,
+            tabId: targetId,
+            nodeId: initialFile.nodeId,
+        });
+    }, [isOpen, initialFile, loadSource, updateTabs]);
 
     const removeRegion = useCallback((id: string) => {
         regionsPluginRef.current?.getRegions().find((r) => r.id === id)?.remove();
@@ -546,13 +756,185 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         return () => window.removeEventListener('keydown', onKey);
     }, [isOpen, activeRegionId, onClose, removeRegion]);
 
+    /* Drop recents whose file has since been deleted or moved. Runs once per
+       open so a stale list never offers a path that cannot load. */
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        void (async () => {
+            const stale: string[] = [];
+            for (const entry of useUiPrefsStore.getState().recentAudioFiles) {
+                try {
+                    const info = await explorerResolvePath(entry.path);
+                    if (!info.exists) stale.push(entry.path);
+                } catch {
+                    /* Leave the entry alone if the path cannot be checked. */
+                }
+            }
+            if (!cancelled) stale.forEach(removeRecentAudioFile);
+        })();
+        return () => { cancelled = true; };
+    }, [isOpen, removeRecentAudioFile]);
+
+    /* Persist the marked segments against the source file so reopening it later
+       brings the work back. Debounced: region drags fire continuously. */
+    useEffect(() => {
+        if (!isReady) return;
+        const path = tabs.find((tab) => tab.id === activeTabId)?.path;
+        if (!path) return;
+        const timer = setTimeout(() => {
+            const saved: SavedAudioSegment[] = [...regions]
+                .sort((a, b) => a.start - b.start)
+                .map((r) => ({ name: r.name, start: r.start, end: r.end, colorIndex: r.colorIndex }));
+            saveAudioSegments(path, saved);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [regions, isReady, tabs, activeTabId, saveAudioSegments]);
+
+    /* Mirror live edits into the owning tab so a switch away keeps them. */
+    useEffect(() => {
+        if (!isReady) return;
+        updateTabs((prev) => {
+            const idx = prev.findIndex((tab) => tab.id === activeTabIdRef.current);
+            // The tab was closed while this edit was in flight; drop the write.
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { ...next[idx], regions, activeRegionId, regionSeq: regionCount.current, duration, zoom };
+            return next;
+        });
+    }, [regions, activeRegionId, duration, zoom, isReady, updateTabs]);
+
+    /* Repaint every region so the selected one is the bright one. */
+    useEffect(() => {
+        const plugin = regionsPluginRef.current;
+        if (!plugin) return;
+        const byId = new Map(regions.map((r) => [r.id, r]));
+        for (const wsReg of plugin.getRegions()) {
+            const meta = byId.get(wsReg.id);
+            if (!meta) continue;
+            wsReg.setOptions({ color: regionColor(meta.colorIndex, wsReg.id === activeRegionId) });
+        }
+    }, [activeRegionId, regions]);
+
     useEffect(() => { volumeRef.current = volume; wsRef.current?.setVolume(volume); }, [volume]);
-    useEffect(() => { if (wsRef.current && isReady) wsRef.current.zoom(zoom); }, [zoom, isReady]);
+    useEffect(() => { zoomRef.current = zoom; if (wsRef.current && isReady) wsRef.current.zoom(zoom); }, [zoom, isReady]);
 
     const handleOpenFile = useCallback(async () => {
         const picked = await pickPath({ mode: 'file', filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'wem'] }, { name: 'All', extensions: ['*'] }], recentsKey: 'audio' });
         if (typeof picked === 'string') void loadSource({ path: picked, name: picked.split(/[\\/]/).pop() || 'audio' });
     }, [loadSource]);
+
+    /* Rebuild the waveform for a tab from its cached bytes and put its segments
+       back, so switching tabs never re-reads the file or re-runs the decoder. */
+    const restoreTab = useCallback(async (tab: SplitterTab) => {
+        const generation = ++loadGenerationRef.current;
+        if (!tab.bytes || tab.status !== 'ready') {
+            wsRef.current?.destroy();
+            wsRef.current = null;
+            regionsPluginRef.current = null;
+            audioBufferRef.current = null;
+            setIsReady(false);
+            setIsLoading(tab.status === 'loading');
+            setRegions([]);
+            setActiveRegionId(null);
+            setDuration(0);
+            setLoadedName(tab.name);
+            regionCount.current = 0;
+            return;
+        }
+
+        setIsLoading(true);
+        setIsReady(false);
+        setRegions([]);
+        setActiveRegionId(null);
+        sourceWasWem.current = tab.wasWem;
+        try {
+            await mountWaveform(tab.bytes, tab.name, tab.mimeType, generation, tab.id);
+            if (generation !== loadGenerationRef.current) return;
+
+            // Put the saved segments back onto the fresh waveform.
+            const plugin = regionsPluginRef.current;
+            if (plugin && tab.regions.length > 0) {
+                const queue = [...tab.regions];
+                restoringRegions.current = queue;
+                try {
+                    let restoredActiveId: string | null = null;
+                    for (const saved of tab.regions) {
+                        const wsReg = plugin.addRegion({
+                            start: saved.start,
+                            end: saved.end,
+                            color: regionColor(saved.colorIndex, false),
+                            drag: true,
+                            resize: true,
+                        });
+                        if (saved.id === tab.activeRegionId) restoredActiveId = wsReg.id;
+                    }
+                    setActiveRegionId(restoredActiveId);
+                } finally {
+                    restoringRegions.current = null;
+                }
+            }
+            regionCount.current = tab.regionSeq;
+            setZoom(tab.zoom);
+        } catch (e) {
+            log.error('[AudioSplitter] tab restore failed', e);
+            setIsLoading(false);
+            flash(`Could not restore ${tab.name}: ${(e as Error).message}`);
+        }
+    }, [mountWaveform, flash]);
+
+    const handleSelectTab = useCallback((tabId: string) => {
+        if (tabId === activeTabIdRef.current) return;
+        wsRef.current?.pause();
+        setIsPlaying(false);
+        const next = tabsRef.current.find((tab) => tab.id === tabId);
+        if (!next) return;
+        activeTabIdRef.current = tabId;
+        setActiveTabId(tabId);
+        void restoreTab(next);
+    }, [restoreTab]);
+
+    const handleNewTab = useCallback(() => {
+        wsRef.current?.pause();
+        setIsPlaying(false);
+        const tab = makeTab();
+        updateTabs([...tabsRef.current, tab]);
+        activeTabIdRef.current = tab.id;
+        setActiveTabId(tab.id);
+        void restoreTab(tab);
+    }, [restoreTab, updateTabs]);
+
+    const handleCloseTab = useCallback((tabId: string, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        /* Everything is computed from tabsRef, the authoritative list, and applied
+           through updateTabs. Deciding this inside a setTabs updater made the
+           updater impure — React could run it twice or discard the run, which
+           left a tab on screen that no handler would act on. */
+        const idx = tabsRef.current.findIndex((tab) => tab.id === tabId);
+        if (idx === -1) return;
+
+        const closing = tabsRef.current[idx];
+        const closingActive = tabId === activeTabIdRef.current;
+
+        /* Abandon any load still running for this tab, whether or not it is the
+           active one: otherwise it completes and writes state back for a tab
+           that no longer exists. */
+        if (closing.status === 'loading') loadGenerationRef.current++;
+
+        const remaining = tabsRef.current.filter((tab) => tab.id !== tabId);
+        // Never leave the bar empty: closing the last tab leaves a fresh one.
+        const next = remaining.length > 0 ? remaining : [makeTab()];
+        updateTabs(next);
+
+        if (closingActive) {
+            const fallback = next[Math.min(idx, next.length - 1)];
+            wsRef.current?.pause();
+            setIsPlaying(false);
+            activeTabIdRef.current = fallback.id;
+            setActiveTabId(fallback.id);
+            void restoreTab(fallback);
+        }
+    }, [restoreTab, updateTabs]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -614,7 +996,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         if (!plugin) return;
         const cur = currentTimeRef.current;
         const end = Math.min(duration || cur + 1, cur + 1);
-        plugin.addRegion({ start: cur, end, color: REGION_COLORS[regionCount.current % REGION_COLORS.length], drag: true, resize: true });
+        plugin.addRegion({ start: cur, end, color: regionColor(regionCount.current, false), drag: true, resize: true });
     }, [duration]);
 
     const handleTimeEdit = useCallback((id: string, field: 'start' | 'end', rawVal: string) => {
@@ -655,7 +1037,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             plugin.addRegion({
                 start: seg.start,
                 end: seg.end,
-                color: REGION_COLORS[regionCount.current % REGION_COLORS.length],
+                color: regionColor(regionCount.current, false),
                 drag: true,
                 resize: true,
             });
@@ -823,7 +1205,8 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
     }, [regions, sliceRegion, flash]);
 
     const handleReplace = useCallback(async () => {
-        if (!onReplace || !initialFile?.nodeId) return;
+        const nodeId = tabs.find((tab) => tab.id === activeTabId)?.nodeId ?? initialFile?.nodeId;
+        if (!onReplace || !nodeId) return;
         const buffer = audioBufferRef.current;
         if (!buffer) { flash('Audio not decoded yet'); return; }
         setIsExporting(true);
@@ -841,7 +1224,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 }
                 outBytes = converted.data;
             }
-            onReplace(outBytes, initialFile.nodeId, initialFile.pane);
+            onReplace(outBytes, nodeId, initialFile?.pane);
             flash('Replaced original audio');
         } catch (e) {
             log.error('[AudioSplitter] replace failed', e);
@@ -849,7 +1232,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         } finally {
             setIsExporting(false);
         }
-    }, [onReplace, initialFile, loadedName, flash]);
+    }, [onReplace, initialFile, loadedName, flash, tabs, activeTabId]);
 
     const handleExportSegmentsToRef = useCallback(async () => {
         if (regions.length === 0 || !onExportSegments) return;
@@ -873,49 +1256,56 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
 
     const sortedRegions = useMemo(() => [...regions].sort((a, b) => a.start - b.start), [regions]);
 
-    if (!isOpen) return null;
-
     const slotSx = { '& .MuiSlider-thumb': { width: 12, height: 12 }, '& .MuiSlider-rail': { opacity: 0.2 } };
     const headerCells = ['#', 'Name', 'Start', 'End', 'Duration', ''];
 
+    /* Hidden rather than unmounted: tearing the panel down would destroy the
+       waveform and the marked segments every time it is closed. */
     return (
         <Box
             className={`audio-splitter${isDragOver ? ' audio-splitter--dragging' : ''}`}
+            sx={isOpen ? undefined : { display: 'none' }}
+            aria-hidden={!isOpen}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
-            <Box className="audio-splitter__header">
-                <ContentCut sx={{ fontSize: 18, color: 'var(--accent-primary)', mr: 0.5 }} />
-                <Box className="audio-splitter__heading">
-                    <Typography className="audio-splitter__title">Audio Splitter</Typography>
-                    <Typography className="audio-splitter__subtitle">Mark, cut, and export audio segments</Typography>
-                </Box>
-
-                {loadedName && (
-                    <Typography className="audio-splitter__file" title={loadedName}>
-                        {loadedName}
-                    </Typography>
-                )}
-
-                <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleOpenFile}>
-                    <span className="dl-icon"><FolderOpen sx={{ fontSize: 14 }} /></span>
-                    <span>Open File</span>
+            <Box className="audio-splitter__tabs" role="tablist">
+                {tabs.map((tab) => (
+                    <Box
+                        key={tab.id}
+                        role="tab"
+                        aria-selected={tab.id === activeTabId}
+                        className={`audio-splitter__tab${tab.id === activeTabId ? ' audio-splitter__tab--active' : ''}`}
+                        onClick={() => handleSelectTab(tab.id)}
+                        title={tab.name || 'Empty tab'}
+                    >
+                        <FolderOpenIcon className="audio-splitter__tab-icon" size={13} />
+                        <span className="audio-splitter__tab-name">{tab.name || 'New tab'}</span>
+                        <span
+                            role="button"
+                            aria-label={`Close ${tab.name || 'tab'}`}
+                            className="audio-splitter__tab-close"
+                            onClick={(e) => handleCloseTab(tab.id, e)}
+                        >
+                            <Close sx={{ fontSize: 11 }} />
+                        </span>
+                    </Box>
+                ))}
+                <button className="audio-splitter__tab-add" onClick={handleNewTab} title="New tab">
+                    <Add sx={{ fontSize: 14 }} />
                 </button>
 
                 <Box sx={{ flex: 1 }} />
 
-                <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={onClose} title="Close Audio Splitter (Esc)">
+                <button
+                    className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
+                    onClick={onClose}
+                    title="Close Audio Splitter (Esc)"
+                >
                     <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
                 </button>
             </Box>
-
-            {(isExporting || exportProgress) && (
-                <Box className="audio-splitter__status">
-                    {isExporting && <LinearProgress sx={{ height: 2, borderRadius: 1, background: 'var(--bg-tertiary)', '& .MuiLinearProgress-bar': { background: 'var(--accent-primary)' } }} />}
-                    <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)', mt: 0.5 }}>{exportProgress}</Typography>
-                </Box>
-            )}
 
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
                 {isLoading && (
@@ -926,18 +1316,18 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 )}
 
                 {!isReady && !isLoading && (
-                    <Box className="audio-splitter__empty">
-                        <ContentCut sx={{ fontSize: 48, opacity: isDragOver ? 0.7 : 0.3, color: isDragOver ? 'var(--accent-primary)' : 'inherit', transition: 'all 0.15s' }} />
-                        <Typography className="audio-splitter__empty-title">
-                            {isDragOver ? 'Drop to load audio' : 'Drop audio here'}
-                        </Typography>
-                        <Typography className="audio-splitter__empty-copy">WAV, MP3, OGG, and WEM are supported</Typography>
-                        <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleOpenFile}>
-                            <span className="dl-icon"><FolderOpen sx={{ fontSize: 14 }} /></span>
-                            <span>Choose Audio File</span>
-                        </button>
-                        <Typography sx={{ fontSize: '0.65rem', opacity: 0.6 }}>Drag across the waveform to mark a segment · Space to play/pause</Typography>
-                    </Box>
+                    <BinOpenLanding
+                        recentBins={recentAudioFiles}
+                        dragActive={isDragOver}
+                        onOpen={handleOpenFile}
+                        onOpenRecent={(path) => void loadSource({ path, name: path.split(/[\\/]/).pop() || 'audio' })}
+                        onRemoveRecent={removeRecentAudioFile}
+                        title={isDragOver ? 'Drop to load audio' : 'No Audio Loaded'}
+                        description="Drop a .wav, .mp3, .ogg, or .wem here"
+                        actionLabel="Open Audio"
+                        recentTitle="Recent Audio"
+                        footnote="Drag across the waveform to mark a segment · Space to play/pause"
+                    />
                 )}
 
                 {isDragOver && isReady && (
@@ -1048,13 +1438,17 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 )}
 
                 {sortedRegions.length > 0 && (
-                    <Box sx={{ borderTop: '1px solid var(--border)', overflowY: 'auto', maxHeight: 240, flexShrink: 0 }}>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 90px 72px 58px', gap: 0, px: 1.5, py: 0.5, borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+                    /* Fills the space under the waveform instead of stopping at a
+                       fixed height: only the rows scroll, while the column header
+                       and the summary bar stay pinned. */
+                    <Box sx={{ borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '28px 1fr 90px 90px 72px 58px', gap: 0, px: 1.5, py: 0.5, borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
                             {headerCells.map((h, i) => (
                                 <Typography key={`${h}-${i}`} sx={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em' }}>{h}</Typography>
                             ))}
                         </Box>
 
+                        <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                         {sortedRegions.map((reg, i) => (
                             <RegionRow
                                 key={reg.id}
@@ -1073,8 +1467,9 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                                 onRemove={removeRegion}
                             />
                         ))}
+                        </Box>
 
-                        <Box sx={{ px: 1.5, py: 0.5, borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', gap: 2 }}>
+                        <Box sx={{ px: 1.5, py: 0.5, borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', gap: 2, flexShrink: 0 }}>
                             <Typography sx={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
                                 {regions.length} segment{regions.length !== 1 ? 's' : ''} &nbsp;·&nbsp; total: {fmtTime(sortedRegions.reduce((a, r) => a + (r.end - r.start), 0))}
                             </Typography>
@@ -1087,9 +1482,21 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             </Box>
 
             <Box className="audio-splitter__footer">
+                <button
+                    className="bnk-action-btn"
+                    style={{ '--action-color': 'var(--text-secondary)' } as React.CSSProperties}
+                    onClick={handleOpenFile}
+                    title="Open audio file"
+                >
+                    <FolderOpenIcon size={17} />
+                </button>
                 <Typography className="audio-splitter__footer-copy">
                     {isReady ? `${regions.length} marked segment${regions.length === 1 ? '' : 's'}` : 'Load audio to begin'}
                 </Typography>
+
+                {/* Centered status, matching the bottom bar on the other pages. */}
+                <span className="audio-splitter__footer-status">{exportProgress}</span>
+
                 <Box className="audio-splitter__footer-actions">
                     <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleExportAll} disabled={isExporting || !isReady || regions.length === 0}>
                         <span className="dl-icon"><Download sx={{ fontSize: 14 }} /></span>

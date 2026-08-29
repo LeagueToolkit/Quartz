@@ -56,7 +56,25 @@ export interface RecentPortDonor {
     lastUsed: string; // ISO timestamp
 }
 
+/* A segment the user marked in the Audio Splitter, saved per source file so
+   reopening that audio restores the work instead of starting from an empty
+   waveform. Times are seconds into the decoded source. */
+export interface SavedAudioSegment {
+    name: string;
+    start: number;
+    end: number;
+    colorIndex: number;
+}
+
+export interface RecentAudioFile {
+    path: string;
+    name: string;
+    lastOpened: string; // ISO timestamp
+    segments: SavedAudioSegment[];
+}
+
 const RECENT_BINS_MAX = 12;
+const RECENT_AUDIO_MAX = 12;
 const RECENT_PORT_DONORS_MAX = 8;
 
 interface UiPrefs {
@@ -105,6 +123,8 @@ interface UiPrefs {
     recentDonorBins: RecentBin[];
     // Port "Load Donor From Game" recent selections.
     recentPortDonors: RecentPortDonor[];
+    // Audio Splitter: files opened from disk, with the segments marked on each.
+    recentAudioFiles: RecentAudioFile[];
 
     set: <K extends keyof UiPrefs>(key: K, value: UiPrefs[K]) => void;
     setPageVisible: (page: Page, visible: boolean) => void;
@@ -120,6 +140,12 @@ interface UiPrefs {
        the incoming entry's own tempRoot, so the caller can clean them up. */
     pushRecentPortDonor: (entry: RecentPortDonor) => string[];
     removeRecentPortDonor: (key: string) => void;
+    /* Audio Splitter recents. Pushing keeps any segments already saved for the
+       path unless new ones are supplied, so simply reopening a file does not
+       wipe the work stored against it. */
+    pushRecentAudioFile: (path: string, segments?: SavedAudioSegment[]) => void;
+    removeRecentAudioFile: (path: string) => void;
+    saveAudioSegments: (path: string, segments: SavedAudioSegment[]) => void;
 }
 
 const RECENT_KEY = { target: 'recentTargetBins', donor: 'recentDonorBins' } as const;
@@ -163,6 +189,7 @@ export const useUiPrefsStore = create<UiPrefs>()(
             recentTargetBins: [],
             recentDonorBins: [],
             recentPortDonors: [],
+            recentAudioFiles: [],
             set: (key, value) => set({ [key]: value } as Pick<UiPrefs, typeof key>),
             setPageVisible: (page, visible) =>
                 set((s) => ({ pageVisibility: { ...s.pageVisibility, [page]: visible } })),
@@ -225,6 +252,27 @@ export const useUiPrefsStore = create<UiPrefs>()(
                     recentPortDonors: s.recentPortDonors.filter(
                         (d) => `${d.championId}_${d.skinId}` !== key,
                     ),
+                })),
+            pushRecentAudioFile: (path, segments) =>
+                set((s) => {
+                    const name = path.split(/[\\/]/).pop() || path;
+                    const prior = s.recentAudioFiles.find((f) => f.path === path);
+                    const next = [
+                        {
+                            path,
+                            name,
+                            lastOpened: new Date().toISOString(),
+                            segments: segments ?? prior?.segments ?? [],
+                        },
+                        ...s.recentAudioFiles.filter((f) => f.path !== path),
+                    ].slice(0, RECENT_AUDIO_MAX);
+                    return { recentAudioFiles: next };
+                }),
+            removeRecentAudioFile: (path) =>
+                set((s) => ({ recentAudioFiles: s.recentAudioFiles.filter((f) => f.path !== path) })),
+            saveAudioSegments: (path, segments) =>
+                set((s) => ({
+                    recentAudioFiles: s.recentAudioFiles.map((f) => (f.path === path ? { ...f, segments } : f)),
                 })),
         }),
         { name: 'quartz-ui-prefs' },

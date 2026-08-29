@@ -152,6 +152,22 @@ export async function convertWavsToWem(
 export async function decodeToWav(inputData: Uint8Array): Promise<Uint8Array> {
     return base64ToBytes(await invoke<string>('audio_decode_to_wav', { data: Array.from(inputData) }));
 }
+
+/* Decode a WEM to whatever the native decoder produces. Most League WEMs are
+   Wwise Vorbis and come back as OGG, which the webview plays directly — asking
+   for WAV would discard that and require vgmstream. */
+export async function decodeToPlayable(
+    inputData: Uint8Array,
+): Promise<{ data: Uint8Array; mimeType: string }> {
+    const result = await invoke<{ dataBase64: string; format: string }>(
+        'audio_decode_to_playable',
+        { data: Array.from(inputData) },
+    );
+    return {
+        data: base64ToBytes(result.dataBase64),
+        mimeType: result.format === 'ogg' ? 'audio/ogg' : 'audio/wav',
+    };
+}
 export async function amplifyWem(data: Uint8Array, gainDb: number): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('audio_amplify_wem', { data: Array.from(data), gainDb }));
 }

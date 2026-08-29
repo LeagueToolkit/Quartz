@@ -21,58 +21,193 @@
     outline-color: var(--accent-primary);
 }
 
-.audio-splitter__header {
+/* Tab bar — same pill design as Flint's titlebar tabs. */
+.audio-splitter__tabs {
     display: flex;
-    min-height: 58px;
+    min-height: 40px;
     flex: 0 0 auto;
     align-items: center;
-    gap: 10px;
-    padding: 8px 14px;
+    gap: 4px;
+    padding: 0 8px;
     border-bottom: 1px solid var(--border);
     background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
-.audio-splitter__heading {
+.audio-splitter__tabs::-webkit-scrollbar {
+    height: 0;
+}
+
+.audio-splitter__tab {
+    position: relative;
     display: flex;
-    min-width: 150px;
-    flex-direction: column;
-    gap: 1px;
-}
-
-.audio-splitter__title.MuiTypography-root {
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 0.84rem;
-    font-weight: 700;
-    line-height: 1.25;
-}
-
-.audio-splitter__subtitle.MuiTypography-root {
-    color: var(--text-muted);
-    font-family: inherit;
-    font-size: 0.58rem;
-    line-height: 1.25;
-}
-
-.audio-splitter__file.MuiTypography-root {
-    max-width: min(32vw, 360px);
+    min-width: 100px;
+    max-width: 200px;
+    height: 28px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 0 6px 0 10px;
+    border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+    border-radius: 3px;
+    background: color-mix(in oklab, var(--bg-tertiary) 55%, transparent);
+    cursor: pointer;
+    isolation: isolate;
     overflow: hidden;
-    padding: 5px 9px;
-    border: 1px solid color-mix(in oklab, var(--border) 82%, transparent);
-    border-radius: var(--radius-sm);
-    background: color-mix(in oklab, var(--bg-primary) 72%, transparent);
+    transform-origin: center;
+    animation: asTabIn 220ms cubic-bezier(.34, 1.56, .64, 1) both;
+    transition:
+        background 180ms cubic-bezier(.22, 1, .36, 1),
+        border-color 180ms cubic-bezier(.22, 1, .36, 1),
+        color 180ms cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes asTabIn {
+    from { opacity: 0; transform: scale(0.94); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* Accent stripe — short centered bar at the bottom of the active tab. */
+.audio-splitter__tab::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    width: 24px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-primary) 50%, transparent);
+    transform: translateX(-50%) scaleX(0);
+    transform-origin: center;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        transform 280ms cubic-bezier(.34, 1.56, .64, 1),
+        opacity 220ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.audio-splitter__tab:hover:not(.audio-splitter__tab--active) {
+    background: color-mix(in oklab, var(--bg-tertiary) 80%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, var(--border));
+}
+
+.audio-splitter__tab--active {
+    background: linear-gradient(180deg,
+        color-mix(in oklab, var(--accent-primary) 14%, var(--bg-tertiary)),
+        color-mix(in oklab, var(--accent-primary) 6%, var(--bg-tertiary)));
+    border-color: color-mix(in oklab, var(--accent-primary) 40%, var(--border));
+}
+
+.audio-splitter__tab--active::before {
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1);
+}
+
+.audio-splitter__tab--active:hover {
+    background: linear-gradient(180deg,
+        color-mix(in oklab, var(--accent-primary) 20%, var(--bg-tertiary)),
+        color-mix(in oklab, var(--accent-primary) 8%, var(--bg-tertiary)));
+}
+
+.audio-splitter__tab-icon {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    pointer-events: none;
+    transition: color 180ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.audio-splitter__tab--active .audio-splitter__tab-icon,
+.audio-splitter__tab:hover .audio-splitter__tab-icon {
+    color: var(--accent-primary);
+}
+
+.audio-splitter__tab-name {
+    flex: 1;
+    overflow: hidden;
     color: var(--text-secondary);
-    font-family: inherit;
-    font-size: 0.66rem;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    pointer-events: none;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.audio-splitter__status {
+.audio-splitter__tab--active .audio-splitter__tab-name {
+    color: var(--text-primary);
+}
+
+.audio-splitter__tab-close {
+    display: flex;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    align-self: center;
+    pointer-events: auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+        background 160ms cubic-bezier(.22, 1, .36, 1),
+        color 160ms cubic-bezier(.22, 1, .36, 1),
+        transform 200ms cubic-bezier(.34, 1.56, .64, 1),
+        opacity 160ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.audio-splitter__tab:hover .audio-splitter__tab-close {
+    opacity: 1;
+}
+
+.audio-splitter__tab--active .audio-splitter__tab-close {
+    opacity: 0.7;
+}
+
+.audio-splitter__tab-close svg {
+    display: block;
+    transition: transform 200ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+.audio-splitter__tab-close:hover {
+    background: color-mix(in oklab, var(--color-danger, #f56565) 28%, transparent);
+    color: var(--color-danger, #f56565);
+    opacity: 1;
+}
+
+.audio-splitter__tab-close:hover svg {
+    transform: rotate(90deg);
+}
+
+.audio-splitter__tab-close:active {
+    transform: scale(0.92);
+}
+
+.audio-splitter__tab-add {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
     flex: 0 0 auto;
-    padding: 5px 16px 6px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+        background 160ms cubic-bezier(.22, 1, .36, 1),
+        border-color 160ms cubic-bezier(.22, 1, .36, 1),
+        color 160ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.audio-splitter__tab-add:hover {
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, var(--border));
+    background: color-mix(in oklab, var(--bg-tertiary) 80%, transparent);
+    color: var(--accent-primary);
 }
 
 .audio-splitter__empty {
@@ -146,6 +281,7 @@
 }
 
 .audio-splitter__footer {
+    position: relative;
     display: flex;
     min-height: 52px;
     flex: 0 0 auto;
@@ -157,7 +293,24 @@
     background: color-mix(in oklab, var(--bg-secondary) 96%, transparent);
 }
 
+/* Absolutely centered so it stays put regardless of the flanking content. */
+.audio-splitter__footer-status {
+    position: absolute;
+    left: 50%;
+    max-width: 40%;
+    transform: translateX(-50%);
+    overflow: hidden;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    pointer-events: none;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .audio-splitter__footer-copy.MuiTypography-root {
+    flex: 1;
     color: var(--text-muted);
     font-family: inherit;
     font-size: 0.62rem;
@@ -165,6 +318,8 @@
 }
 
 .audio-splitter__footer-actions {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -182,14 +337,16 @@
 }
 
 @media (max-width: 900px), (max-height: 650px) {
-    .audio-splitter__subtitle,
-    .audio-splitter__file,
     .audio-splitter__footer-copy {
         display: none;
     }
 
-    .audio-splitter__header {
-        min-height: 48px;
+    .audio-splitter__tabs {
+        min-height: 32px;
+    }
+
+    .audio-splitter__tab {
+        max-width: 150px;
     }
 
     .audio-splitter__wave-area {
